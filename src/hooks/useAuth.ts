@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useSupabase } from '@/components/providers'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
@@ -43,29 +43,33 @@ export const useAuth = () => {
     }
   }
 
-  // Role-based checks
-  const isAdmin = user?.role === 'admin'
-  const isExchange = user?.role === 'exchange'
-  const isAuthenticated = !!user
+  // Memoize computed values to prevent unnecessary re-renders
+  const authData = useMemo(() => {
+    const isAdmin = user?.role === 'admin'
+    const isExchange = user?.role === 'exchange'
+    const isAuthenticated = !!user
 
-  return {
-    // State
-    user,
-    session,
-    isLoading,
-    isAuthenticated,
-    isAdmin,
-    isExchange,
-    
-    // User info
-    role: user?.role,
-    exchangeId: user?.exchange_id,
-    exchangeName: user?.exchange_name,
-    
-    // Actions
-    login,
-    logout,
-  }
+    return {
+      // State
+      user,
+      session,
+      isLoading,
+      isAuthenticated,
+      isAdmin,
+      isExchange,
+      
+      // User info
+      role: user?.role,
+      exchangeId: user?.exchange_id,
+      exchangeName: user?.exchange_name,
+      
+      // Actions
+      login,
+      logout,
+    }
+  }, [user, session, isLoading, login, logout])
+
+  return authData
 }
 
 /**

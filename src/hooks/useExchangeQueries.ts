@@ -1,7 +1,8 @@
 'use client'
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
+import { useCallback } from 'react'
 
 // Interfaces for Exchange Dashboard Data
 export interface ExchangeStats {
@@ -197,71 +198,152 @@ export function usePrefetchExchangeOrderDetails() {
   return prefetchOrderDetails
 }
 
+// Order Creation Hook
+export function useCreateOrder() {
+  const queryClient = useQueryClient()
+  const { exchangeId } = useAuth()
+
+  return useMutation({
+    mutationFn: async (orderData: {
+      type: 'INCOMING' | 'OUTGOING'
+      amount: string
+      senderName?: string
+      recipientName?: string
+      bankName?: string
+      cliqBankAliasName?: string
+      cliqMobileNumber?: string
+      paymentProofUrl?: string
+    }) => {
+      const response = await fetch('/api/exchange/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...orderData,
+          exchangeId
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create order')
+      }
+
+      return response.json()
+    },
+    onSuccess: (newOrder: ExchangeOrder) => {
+      if (!exchangeId) return
+
+      // Invalidate and refetch related queries
+      queryClient.invalidateQueries({ queryKey: exchangeQueryKeys.orders(exchangeId) })
+      queryClient.invalidateQueries({ queryKey: exchangeQueryKeys.recentOrders(exchangeId) })
+      queryClient.invalidateQueries({ queryKey: exchangeQueryKeys.stats(exchangeId) })
+
+      // Optimistically add the new order
+      queryClient.setQueryData(
+        exchangeQueryKeys.orders(exchangeId),
+        (old: ExchangeOrder[] | undefined) => [newOrder, ...(old || [])]
+      )
+
+      queryClient.setQueryData(
+        exchangeQueryKeys.recentOrders(exchangeId),
+        (old: ExchangeOrder[] | undefined) => [newOrder, ...(old || [])].slice(0, 10)
+      )
+    },
+    onError: (error: Error) => {
+      console.error('Order creation failed:', error)
+    }
+  })
+}
+
 // Optimistic Updates Helper
 export function useExchangeOptimisticUpdates() {
   const queryClient = useQueryClient()
   const { exchangeId } = useAuth()
   
-  const updateOrderOptimistically = (orderId: string, updates: Partial<ExchangeOrder>) => {
-    if (!exchangeId) return
+  const updateOrderOptimistically = useCallback((orderId: string, updates: Partial<ExchangeOrder>) => {
+    if (!exchangeId || !orderId || !updates) return
     
-    // Update individual order
-    queryClient.setQueryData(
-      exchangeQueryKeys.order(orderId),
-      (old: ExchangeOrder | undefined) => old ? { ...old, ...updates } : undefined
-    )
-    
-    // Update orders list
-    queryClient.setQueryData(
-      exchangeQueryKeys.orders(exchangeId),
-      (old: ExchangeOrder[] | undefined) => 
-        old?.map(order => order.id === orderId ? { ...order, ...updates } : order)
-    )
-    
-    // Update recent orders
-    queryClient.setQueryData(
-      exchangeQueryKeys.recentOrders(exchangeId),
-      (old: ExchangeOrder[] | undefined) => 
-        old?.map(order => order.id === orderId ? { ...order, ...updates } : order)
-    )
-  }
+    try {
+      // Update individual order
+      queryClient.setQueryData(
+        exchangeQueryKeys.order(orderId),
+        (old: ExchangeOrder | undefined) => old ? { ...old, ...updates } : undefined
+      )
+      
+      // Update orders list
+      queryClient.setQueryData(
+        exchangeQueryKeys.orders(exchangeId),
+        (old: ExchangeOrder[] | undefined) => 
+          old?.map(order => order.id === orderId ? { ...order, ...updates } : order)
+      )
+      
+      // Update recent orders
+      queryClient.setQueryData(
+        exchangeQueryKeys.recentOrders(exchangeId),
+        (old: ExchangeOrder[] | undefined) => 
+          old?.map(order => order.id === orderId ? { ...order, ...updates } : order)
+      )
+    } catch (error) {
+      console.error('Error updating order optimistically:', error)
+    }
+  }, [queryClient, exchangeId])
   
-  const addNewOrderOptimistically = (newOrder: ExchangeOrder) => {
-    if (!exchangeId) return
+  const addNewOrderOptimistically = useCallback((newOrder: ExchangeOrder) => {
+    if (!exchangeId || !newOrder || !newOrder.id) return
     
-    // Add to orders list
-    queryClient.setQueryData(
-      exchangeQueryKeys.orders(exchangeId),
-      (old: ExchangeOrder[] | undefined) => [newOrder, ...(old || [])]
-    )
-    
-    // Add to recent orders
-    queryClient.setQueryData(
-      exchangeQueryKeys.recentOrders(exchangeId),
-      (old: ExchangeOrder[] | undefined) => [newOrder, ...(old || [])].slice(0, 10)
-    )
-  }
+    try {
+      // Add to orders list
+      queryClient.setQueryData(
+        exchangeQueryKeys.orders(exchangeId),
+        (old: ExchangeOrder[] | undefined) => {
+          // Prevent duplicates
+          const existing = old?.find(order => order.id === newOrder.id)
+          if (existing) return old
+          return [newOrder, ...(old || [])]
+        }
+      )
+      
+      // Add to recent orders
+      queryClient.setQueryData(
+        exchangeQueryKeys.recentOrders(exchangeId),
+        (old: ExchangeOrder[] | undefined) => {
+          // Prevent duplicates
+          const existing = old?.find(order => order.id === newOrder.id)
+          if (existing) return old
+          return [newOrder, ...(old || [])].slice(0, 10)
+        }
+      )
+    } catch (error) {
+      console.error('Error adding new order optimistically:', error)
+    }
+  }, [queryClient, exchangeId])
   
-  const removeOrderOptimistically = (orderId: string) => {
-    if (!exchangeId) return
+  const removeOrderOptimistically = useCallback((orderId: string) => {
+    if (!exchangeId || !orderId) return
     
-    // Remove from orders list
-    queryClient.setQueryData(
-      exchangeQueryKeys.orders(exchangeId),
-      (old: ExchangeOrder[] | undefined) => old?.filter(order => order.id !== orderId)
-    )
-    
-    // Remove from recent orders
-    queryClient.setQueryData(
-      exchangeQueryKeys.recentOrders(exchangeId),
-      (old: ExchangeOrder[] | undefined) => old?.filter(order => order.id !== orderId)
-    )
-    
-    // Remove individual order cache
-    queryClient.removeQueries({
-      queryKey: exchangeQueryKeys.order(orderId)
-    })
-  }
+    try {
+      // Remove from orders list
+      queryClient.setQueryData(
+        exchangeQueryKeys.orders(exchangeId),
+        (old: ExchangeOrder[] | undefined) => old?.filter(order => order.id !== orderId)
+      )
+      
+      // Remove from recent orders
+      queryClient.setQueryData(
+        exchangeQueryKeys.recentOrders(exchangeId),
+        (old: ExchangeOrder[] | undefined) => old?.filter(order => order.id !== orderId)
+      )
+      
+      // Remove individual order cache
+      queryClient.removeQueries({
+        queryKey: exchangeQueryKeys.order(orderId)
+      })
+    } catch (error) {
+      console.error('Error removing order optimistically:', error)
+    }
+  }, [queryClient, exchangeId])
   
   return {
     updateOrderOptimistically,

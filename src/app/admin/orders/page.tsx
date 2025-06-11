@@ -79,111 +79,40 @@ export default function AdminOrdersPage() {
     urgent: false
   })
 
-  // Mock data - will be replaced with real API calls
+  // Load orders from API
   useEffect(() => {
     const loadOrders = async () => {
-      setTimeout(() => {
-        setOrders([
-          {
-            id: '1',
-            orderNumber: 'T25010045',
-            type: 'OUTGOING',
-            status: 'PENDING_REVIEW',
-            amount: 1250.00,
-            commission: 25.00,
-            netAmount: 1275.00,
-            exchangeName: 'Jordan Exchange Co.',
-            exchangeId: 'exc1',
-            recipientName: 'Ahmad Abdullah',
-            bankName: 'Arab Bank',
-            cliqBankAliasName: 'Ahmad.Bank',
-            cliqMobileNumber: '0077123456',
-            createdAt: '2025-01-15T10:30:00Z',
-            updatedAt: '2025-01-15T10:30:00Z',
-            cancellationRequested: false,
-            urgent: true,
-            hasUnreadMessages: true
-          },
-          {
-            id: '2',
-            orderNumber: 'T25010044',
-            type: 'INCOMING',
-            status: 'PROCESSING',
-            amount: 890.50,
-            commission: 17.81,
-            netAmount: 872.69,
-            exchangeName: 'Amman Currency Exchange',
-            exchangeId: 'exc2',
-            senderName: 'Sarah Mohammed',
-            bankName: 'Jordan Ahli Bank',
-            paymentProofUrl: '/uploads/proof-123.jpg',
-            createdAt: '2025-01-15T09:45:00Z',
-            updatedAt: '2025-01-15T11:15:00Z',
-            approvedAt: '2025-01-15T10:00:00Z',
-            cancellationRequested: false
-          },
-          {
-            id: '3',
-            orderNumber: 'T25010043',
-            type: 'OUTGOING',
-            status: 'COMPLETED',
-            amount: 2100.75,
-            commission: 42.02,
-            netAmount: 2142.77,
-            exchangeName: 'Capital Exchange',
-            exchangeId: 'exc3',
-            recipientName: 'Mohammed Ali',
-            bankName: 'Bank of Jordan',
-            cliqBankAliasName: 'Mohammed.B',
-            cliqMobileNumber: '0078987654',
-            completionProofUrl: '/uploads/completion-456.jpg',
-            createdAt: '2025-01-15T08:20:00Z',
-            updatedAt: '2025-01-15T12:30:00Z',
-            approvedAt: '2025-01-15T08:35:00Z',
-            completedAt: '2025-01-15T12:30:00Z',
-            cancellationRequested: false
-          },
-          {
-            id: '4',
-            orderNumber: 'T25010042',
-            type: 'INCOMING',
-            status: 'SUBMITTED',
-            amount: 750.25,
-            commission: 15.01,
-            netAmount: 735.24,
-            exchangeName: 'Downtown Exchange',
-            exchangeId: 'exc4',
-            senderName: 'Layla Hassan',
-            bankName: 'Zain Cash',
-            paymentProofUrl: '/uploads/proof-789.jpg',
-            createdAt: '2025-01-15T07:15:00Z',
-            updatedAt: '2025-01-15T07:15:00Z',
-            cancellationRequested: false,
-            urgent: true
-          },
-          {
-            id: '5',
-            orderNumber: 'T25010041',
-            type: 'OUTGOING',
-            status: 'REJECTED',
-            amount: 500.00,
-            commission: 10.00,
-            netAmount: 510.00,
-            exchangeName: 'City Exchange',
-            exchangeId: 'exc5',
-            recipientName: 'Omar Khalil',
-            rejectionReason: 'Invalid CliQ mobile number format',
-            createdAt: '2025-01-15T06:00:00Z',
-            updatedAt: '2025-01-15T09:00:00Z',
-            cancellationRequested: false
-          }
-        ])
+      try {
+        setIsLoading(true)
+        
+        // Build query parameters
+        const params = new URLSearchParams()
+        if (filters.search) params.append('search', filters.search)
+        if (filters.status) params.append('status', filters.status)
+        if (filters.type) params.append('type', filters.type)
+        if (filters.exchange) params.append('exchange', filters.exchange)
+        if (filters.dateFrom) params.append('dateFrom', filters.dateFrom)
+        if (filters.dateTo) params.append('dateTo', filters.dateTo)
+        if (filters.urgent) params.append('urgent', 'true')
+        
+        const response = await fetch(`/api/admin/orders?${params.toString()}`)
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch orders')
+        }
+        
+        const data = await response.json()
+        setOrders(data.orders || [])
+      } catch (error) {
+        console.error('Error loading orders:', error)
+        setOrders([])
+      } finally {
         setIsLoading(false)
-      }, 1000)
+      }
     }
 
     loadOrders()
-  }, [])
+  }, [filters])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -225,12 +154,71 @@ export default function AdminOrdersPage() {
   }
 
   const getActionButtons = (order: Order) => {
+    const handleAction = async (action: string, orderId: string) => {
+      try {
+        let endpoint = ''
+        let method = 'POST'
+        let body: any = {}
+
+        switch (action) {
+          case 'approve':
+            endpoint = `/api/admin/orders/${orderId}/approve`
+            break
+          case 'reject':
+            const reason = prompt('Please provide a rejection reason:')
+            if (!reason) return
+            endpoint = `/api/admin/orders/${orderId}/reject`
+            body = { reason }
+            break
+          case 'complete':
+            endpoint = `/api/admin/orders/${orderId}/complete`
+            if (order.type === 'INCOMING') {
+              const actualAmount = prompt(`Confirm actual amount received (original: ${order.amount} JOD):`, order.amount.toString())
+              if (actualAmount && parseFloat(actualAmount) !== order.amount) {
+                body = { actualAmount: parseFloat(actualAmount) }
+              }
+            }
+            break
+          case 'upload':
+            // Redirect to order detail page for file upload
+            window.location.href = `/admin/orders/${orderId}`
+            return
+          case 'download':
+            if (order.completionProofUrl) {
+              window.open(order.completionProofUrl, '_blank')
+            }
+            return
+        }
+
+        const response = await fetch(endpoint, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || `Failed to ${action} order`)
+        }
+
+        const result = await response.json()
+        alert(`${result.message}`)
+        
+        // Reload the page to refresh data
+        window.location.reload()
+      } catch (error) {
+        console.error(`Error ${action}ing order:`, error)
+        alert(error instanceof Error ? error.message : `Failed to ${action} order`)
+      }
+    }
+
     switch (order.status) {
       case 'SUBMITTED':
       case 'PENDING_REVIEW':
         return (
           <div className="flex items-center space-x-2">
             <button
+              onClick={() => handleAction('approve', order.id)}
               className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
               title="Approve Order"
             >
@@ -238,6 +226,7 @@ export default function AdminOrdersPage() {
               Approve
             </button>
             <button
+              onClick={() => handleAction('reject', order.id)}
               className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
               title="Reject Order"
             >
@@ -250,6 +239,7 @@ export default function AdminOrdersPage() {
         if (order.type === 'OUTGOING') {
           return (
             <button
+              onClick={() => handleAction('upload', order.id)}
               className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               title="Upload Completion Screenshot"
             >
@@ -260,6 +250,7 @@ export default function AdminOrdersPage() {
         } else {
           return (
             <button
+              onClick={() => handleAction('complete', order.id)}
               className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
               title="Mark as Completed"
             >
@@ -272,6 +263,7 @@ export default function AdminOrdersPage() {
         if (order.completionProofUrl) {
           return (
             <button
+              onClick={() => handleAction('download', order.id)}
               className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
               title="Download Screenshot"
             >

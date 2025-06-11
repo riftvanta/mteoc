@@ -9,6 +9,7 @@ export async function GET(
     const { id } = await params
 
     // Get exchange details with statistics
+    // Note: id here is exchange_id, not user_id
     const exchanges = await directDb.query<{
       id: string
       username: string
@@ -31,7 +32,7 @@ export async function GET(
       lastOrderDate: Date | null
     }>(`
       SELECT 
-        u.id,
+        e.id,
         u.username,
         e.name,
         e."contactEmail",
@@ -50,8 +51,8 @@ export async function GET(
         COALESCE(stats.pending_orders, 0) as "pendingOrders",
         COALESCE(stats.total_volume, 0)::text as "totalVolume",
         stats.last_order_date as "lastOrderDate"
-      FROM users u
-      JOIN exchanges e ON u.id = e.user_id
+      FROM exchanges e
+      JOIN users u ON e.user_id = u.id
       LEFT JOIN (
         SELECT 
           exchange_id,
@@ -64,7 +65,7 @@ export async function GET(
         WHERE exchange_id = $1
         GROUP BY exchange_id
       ) stats ON e.id = stats.exchange_id
-      WHERE u.id = $1 AND u.role = 'EXCHANGE'
+      WHERE e.id = $1 AND u.role = 'EXCHANGE'
     `, [id])
 
     if (exchanges.length === 0) {
@@ -128,9 +129,9 @@ export async function PATCH(
       allowedOutgoingBanks
     } = body
 
-    // Check if exchange exists
+    // Check if exchange exists using exchange_id
     const existingExchanges = await directDb.query<{id: string}>(
-      'SELECT u.id FROM users u JOIN exchanges e ON u.id = e.user_id WHERE u.id = $1 AND u.role = $2',
+      'SELECT e.id FROM exchanges e JOIN users u ON e.user_id = u.id WHERE e.id = $1 AND u.role = $2',
       [id, 'EXCHANGE']
     )
 
@@ -200,7 +201,7 @@ export async function PATCH(
     const updateQuery = `
       UPDATE exchanges 
       SET ${updateFields.join(', ')}
-      WHERE user_id = $${paramIndex}
+      WHERE id = $${paramIndex}
       RETURNING *
     `
 

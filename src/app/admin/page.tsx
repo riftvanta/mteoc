@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { LoadingSpinner } from '@/components/admin/LoadingSpinner'
-import { useDashboardData, usePrefetchOrderDetails } from '@/hooks/useOptimizedQueries'
+import { useDashboardData, usePrefetchAdminOrderDetails } from '@/hooks/useOptimizedQueries'
 
 // Interfaces for type safety
 interface DashboardStats {
@@ -71,7 +71,7 @@ function DashboardContentLoading() {
 export default function AdminDashboard() {
   // Use optimized hooks for data fetching
   const { stats, orders, isLoading, isError, error, isRefetching, refetch } = useDashboardData()
-  const prefetchOrderDetails = usePrefetchOrderDetails()
+  const prefetchOrderDetails = usePrefetchAdminOrderDetails()
 
   // Handle prefetching on hover for better UX
   const handleOrderHover = (orderId: string) => {

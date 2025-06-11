@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, createContext, useContext, useEffect } from 'react'
+import React, { useState, createContext, useContext, useEffect, useCallback, useRef } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { getAdaptiveConfig } from '@/lib/performance'
 
@@ -42,18 +42,38 @@ export const useSupabase = () => {
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const initialized = useRef(false)
 
   // Check for existing session on mount
   useEffect(() => {
+    // Prevent double initialization in React Strict Mode
+    if (initialized.current) return
+    initialized.current = true
+
     const checkSession = () => {
       try {
+        // Only run on client side
+        if (typeof window === 'undefined') {
+          setIsLoading(false)
+          return
+        }
+
         const storedUser = localStorage.getItem('auth_user')
         if (storedUser) {
-          setUser(JSON.parse(storedUser))
+          const parsedUser = JSON.parse(storedUser)
+          // Validate the parsed user has required fields
+          if (parsedUser && parsedUser.id && parsedUser.username && parsedUser.role) {
+            setUser(parsedUser)
+          } else {
+            // Invalid stored user, remove it
+            localStorage.removeItem('auth_user')
+          }
         }
       } catch (error) {
         console.error('Error checking session:', error)
-        localStorage.removeItem('auth_user')
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('auth_user')
+        }
       } finally {
         setIsLoading(false)
       }
@@ -62,7 +82,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     checkSession()
   }, [])
 
-  const login = async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string) => {
     try {
       setIsLoading(true)
 
@@ -82,6 +102,11 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { user: authUser } = await response.json()
       
+      // Validate user data before storing
+      if (!authUser || !authUser.id || !authUser.username || !authUser.role) {
+        throw new Error('Invalid user data received from server')
+      }
+      
       // Store user in localStorage and state
       localStorage.setItem('auth_user', JSON.stringify(authUser))
       setUser(authUser)
@@ -91,12 +116,14 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
-  const logout = () => {
-    localStorage.removeItem('auth_user')
+  const logout = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('auth_user')
+    }
     setUser(null)
-  }
+  }, [])
 
   return (
     <AuthContext.Provider value={{
@@ -112,67 +139,39 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
-  // Get adaptive configuration based on device capabilities
-  const adaptiveConfig = getAdaptiveConfig()
-  
-  // Create a stable QueryClient instance with adaptive settings
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: {
-      queries: {
-        // Adaptive cache timing based on device capabilities
-        staleTime: adaptiveConfig.queryStaleTime,
-        gcTime: adaptiveConfig.queryStaleTime * 2,
-        
-        // Retry configuration
-        retry: (failureCount, error) => {
-          // Don't retry 4xx errors (client errors)
-          if (error instanceof Error && error.message.includes('40')) {
-            return false
-          }
-          return failureCount < 2
-        },
-        retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-        
-        // Background refetching optimization
-        refetchOnWindowFocus: false,
-        refetchOnReconnect: 'always',
-        refetchInterval: false, // Disable automatic refetching
-        
-        // Network-aware settings
-        networkMode: 'online',
-        
-        // Performance optimizations
-        structuralSharing: true,
-        throwOnError: false,
-        
-        // Meta information for debugging
-        meta: {
-          errorMessage: 'Failed to fetch data. Please try again.',
-        },
-      },
-      mutations: {
-        retry: 1,
-        networkMode: 'online',
-        throwOnError: false,
-        meta: {
-          errorMessage: 'Failed to save changes. Please try again.',
-        },
-      },
-    },
-  }))
+// React Query setup with optimized configuration
+let queryClient: QueryClient | null = null
 
-  // Cleanup old queries periodically
-  React.useEffect(() => {
-    const cleanup = setInterval(() => {
-      queryClient.getQueryCache().clear()
-    }, 10 * 60 * 1000) // Every 10 minutes
+const getQueryClient = () => {
+  if (!queryClient) {
+    const adaptiveConfig = getAdaptiveConfig()
     
-    return () => clearInterval(cleanup)
-  }, [queryClient])
+    queryClient = new QueryClient({
+      defaultOptions: {
+                 queries: {
+           staleTime: adaptiveConfig.queryStaleTime,
+           gcTime: adaptiveConfig.queryStaleTime * 2,
+           refetchOnWindowFocus: false,
+           refetchOnMount: false,
+           refetchOnReconnect: true,
+           retry: 1,
+           retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+         },
+        mutations: {
+          retry: 1,
+          retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
+        },
+      },
+    })
+  }
+  return queryClient
+}
 
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [client] = useState(() => getQueryClient())
+  
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={client}>
       <AuthProvider>
         {children}
       </AuthProvider>

@@ -196,7 +196,7 @@ export const isValidStatusTransition = (
   newStatus: string
 ): boolean => {
   const validTransitions: Record<string, string[]> = {
-    'SUBMITTED': ['PENDING_REVIEW', 'CANCELLED'],
+    'SUBMITTED': ['PENDING_REVIEW', 'APPROVED', 'REJECTED', 'CANCELLED'],
     'PENDING_REVIEW': ['APPROVED', 'REJECTED', 'CANCELLED'],
     'APPROVED': ['PROCESSING', 'CANCELLED'],
     'REJECTED': [], // Final status
@@ -209,7 +209,7 @@ export const isValidStatusTransition = (
 }
 
 /**
- * Comprehensive order validation schema
+ * Server-side order validation schemas (without File validation)
  */
 export const outgoingOrderSchema = z.object({
   amount: amountSchema,
@@ -219,15 +219,35 @@ export const outgoingOrderSchema = z.object({
   bankName: bankNameSchema.optional(),
 })
 
-export const incomingOrderSchema = z.object({
+export const incomingOrderServerSchema = z.object({
   amount: amountSchema,
   bankName: bankNameSchema,
   senderName: personNameSchema.optional(),
-  paymentProof: z.instanceof(File).refine(
-    (file) => validateFileUpload(file).isValid,
-    (file) => ({ message: validateFileUpload(file).error || 'Invalid file' })
-  ),
+  paymentProofUrl: z.string().url().optional(),
 })
 
+/**
+ * Client-side order validation schemas (with File validation)
+ * Only use these on the client side where File API is available
+ */
+export const createClientOrderSchemas = () => {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return {
+    incomingOrderSchema: z.object({
+      amount: amountSchema,
+      bankName: bankNameSchema,
+      senderName: personNameSchema.optional(),
+      paymentProof: z.instanceof(File).refine(
+        (file) => validateFileUpload(file).isValid,
+        (file) => ({ message: validateFileUpload(file).error || 'Invalid file' })
+      ),
+    })
+  }
+}
+
 export type OutgoingOrderData = z.infer<typeof outgoingOrderSchema>
-export type IncomingOrderData = z.infer<typeof incomingOrderSchema> 
+export type IncomingOrderServerData = z.infer<typeof incomingOrderServerSchema> 

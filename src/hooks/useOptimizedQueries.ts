@@ -115,12 +115,36 @@ export const useDashboardData = () => {
   }
 }
 
-// Order details hook with optimistic updates
+// Admin order details hook
+export const useAdminOrderDetails = (orderId: string) => {
+  return useQuery({
+    queryKey: ['admin', 'order', orderId],
+    queryFn: async () => {
+      const response = await fetch(`/api/admin/orders/${orderId}`)
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Network error' }))
+        throw new Error(`${response.status}: ${errorData.error || 'Order not found'}`)
+      }
+      
+      return response.json()
+    },
+    enabled: !!orderId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 1,
+    meta: {
+      errorMessage: 'fetch admin order details',
+    },
+  })
+}
+
+// Order details hook with optimistic updates (for exchange use)
 export const useOrderDetails = (orderId: string) => {
   return useQuery({
     queryKey: queryKeys.orderDetails(orderId),
     queryFn: async () => {
-      const response = await fetch(`/api/orders/${orderId}`)
+      const response = await fetch(`/api/exchange/orders/${orderId}`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Network error' }))
@@ -163,7 +187,44 @@ export const useOrdersByExchange = (exchangeId: string, page: number = 1) => {
   })
 }
 
-// Update order status mutation
+// Admin update order status mutation
+export const useAdminUpdateOrderStatus = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ orderId, action, data }: { 
+      orderId: string
+      action: 'approve' | 'reject' | 'complete' | 'cancel'
+      data?: any
+    }) => {
+      const response = await fetch(`/api/admin/orders/${orderId}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data || {}),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Network error' }))
+        throw new Error(errorData.error || `Failed to ${action} order`)
+      }
+      
+      return response.json()
+    },
+    onSuccess: (data, variables) => {
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats })
+      queryClient.invalidateQueries({ queryKey: queryKeys.recentOrders(5) })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'order', variables.orderId] })
+      
+      toast.success(`Order ${variables.action}d successfully`)
+    },
+    onError: (error) => {
+      handleQueryError(error, 'Update order')
+    },
+  })
+}
+
+// Update order status mutation (for exchange use)
 export const useUpdateOrderStatus = () => {
   const queryClient = useQueryClient()
   
@@ -173,7 +234,7 @@ export const useUpdateOrderStatus = () => {
       status: string
       reason?: string 
     }) => {
-      const response = await fetch(`/api/orders/${orderId}/status`, {
+      const response = await fetch(`/api/exchange/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, reason }),
@@ -203,7 +264,24 @@ export const useUpdateOrderStatus = () => {
   })
 }
 
-// Prefetch utilities for better UX
+// Admin prefetch utilities for better UX
+export const usePrefetchAdminOrderDetails = () => {
+  const queryClient = useQueryClient()
+  
+  return (orderId: string) => {
+    queryClient.prefetchQuery({
+      queryKey: ['admin', 'order', orderId],
+      queryFn: async () => {
+        const response = await fetch(`/api/admin/orders/${orderId}`)
+        if (!response.ok) throw new Error('Failed to fetch admin order details')
+        return response.json()
+      },
+      staleTime: 2 * 60 * 1000,
+    })
+  }
+}
+
+// Prefetch utilities for better UX (for exchange use)
 export const usePrefetchOrderDetails = () => {
   const queryClient = useQueryClient()
   
@@ -211,7 +289,7 @@ export const usePrefetchOrderDetails = () => {
     queryClient.prefetchQuery({
       queryKey: queryKeys.orderDetails(orderId),
       queryFn: async () => {
-        const response = await fetch(`/api/orders/${orderId}`)
+        const response = await fetch(`/api/exchange/orders/${orderId}`)
         if (!response.ok) throw new Error('Failed to fetch order')
         return response.json()
       },
