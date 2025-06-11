@@ -1,0 +1,202 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 142 76% 36%;
+  --primary-foreground: 355.7 100% 97.3%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222.2 84% 4.9%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222.2 84% 4.9%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 142 76% 36%;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 84% 4.9%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 142 76% 36%;
+  --primary-foreground: 355.7 100% 97.3%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 142 76% 36%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Mobile-first responsive design */
+@layer base {
+  html {
+    @apply text-base;
+    /* Support for safe areas on mobile devices */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  
+  body {
+    @apply min-h-screen;
+    /* Prevent horizontal scroll on mobile */
+    overflow-x: hidden;
+    /* Optimize for mobile performance */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Mobile touch optimizations */
+@layer components {
+  .touch-target {
+    @apply min-h-touch min-w-touch flex items-center justify-center;
+  }
+  
+  .mobile-input {
+    @apply text-base; /* Prevents zoom on iOS */
+    @apply rounded-lg border-2 border-gray-300 px-4 py-3;
+    @apply focus:border-primary focus:ring-2 focus:ring-primary/20;
+    @apply transition-colors duration-200;
+  }
+  
+  .mobile-button {
+    @apply touch-target rounded-lg font-medium;
+    @apply transition-all duration-200;
+    @apply active:scale-95;
+  }
+  
+  .mobile-card {
+    @apply bg-card rounded-lg border border-border p-4 shadow-sm;
+    @apply transition-shadow duration-200;
+    @apply hover:shadow-md;
+  }
+}
+
+/* Order status specific styles */
+@layer components {
+  .status-submitted {
+    @apply bg-blue-50 text-blue-700 border-blue-200;
+  }
+  
+  .status-pending {
+    @apply bg-yellow-50 text-yellow-700 border-yellow-200;
+  }
+  
+  .status-approved {
+    @apply bg-green-50 text-green-700 border-green-200;
+  }
+  
+  .status-rejected {
+    @apply bg-red-50 text-red-700 border-red-200;
+  }
+  
+  .status-processing {
+    @apply bg-purple-50 text-purple-700 border-purple-200;
+  }
+  
+  .status-completed {
+    @apply bg-emerald-50 text-emerald-700 border-emerald-200;
+  }
+  
+  .status-cancelled {
+    @apply bg-gray-50 text-gray-700 border-gray-200;
+  }
+}
+
+/* Financial display styles */
+@layer components {
+  .amount-display {
+    @apply font-mono text-lg font-semibold tracking-wider;
+  }
+  
+  .commission-display {
+    @apply text-sm text-muted-foreground font-medium;
+  }
+  
+  .balance-positive {
+    @apply text-success;
+  }
+  
+  .balance-negative {
+    @apply text-destructive;
+  }
+  
+  .balance-zero {
+    @apply text-muted-foreground;
+  }
+}
+
+/* Chat interface styles */
+@layer components {
+  .chat-message {
+    @apply max-w-[85%] rounded-lg px-3 py-2 text-sm;
+  }
+  
+  .chat-message-sent {
+    @apply bg-primary text-primary-foreground ml-auto;
+  }
+  
+  .chat-message-received {
+    @apply bg-muted text-muted-foreground mr-auto;
+  }
+  
+  .chat-timestamp {
+    @apply text-xs text-muted-foreground;
+  }
+}
+
+/* Loading and animation styles */
+@layer components {
+  .loading-spinner {
+    @apply animate-spin rounded-full border-2 border-gray-300 border-t-primary;
+  }
+  
+  .slide-up {
+    @apply transform transition-transform duration-300 ease-out;
+    @apply translate-y-full;
+  }
+  
+  .slide-up.active {
+    @apply translate-y-0;
+  }
+}
+
+/* Print styles for screenshots */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-only {
+    display: block !important;
+  }
+} 

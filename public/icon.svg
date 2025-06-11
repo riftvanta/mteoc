@@ -1,0 +1,12 @@
+<svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" rx="24" fill="#007a3d"/>
+  <circle cx="96" cy="96" r="60" fill="rgba(255,255,255,0.1)"/>
+  <path d="M96 64c-8.284 0-15 4.477-15 10s6.716 10 15 10 15 4.477 15 10-6.716 10-15 10m0-40c5.55 0 10.4 2.01 12.995 5M96 64V54m0 80v10m0-10c-5.55 0-10.4-2.01-12.995-5" 
+        stroke="white" 
+        stroke-width="6" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+  <text x="96" y="160" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="white">
+    MTEOC
+  </text>
+</svg> 

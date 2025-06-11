@@ -1,0 +1,191 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+// User management
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String
+  role        UserRole
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Exchange office details (only for EXCHANGE role)
+  exchange    Exchange?
+
+  // Admin can send messages to any exchange
+  sentMessages     OrderMessage[] @relation("SentMessages")
+  receivedMessages OrderMessage[] @relation("ReceivedMessages")
+
+  @@map("users")
+}
+
+model Exchange {
+  id               String    @id @default(cuid())
+  name             String
+  contactEmail     String?
+  contactPhone     String?
+  balance          Decimal   @default(0) @db.Decimal(15, 3)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // User relation
+  userId           String    @unique @map("user_id")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Commission settings
+  incomingCommissionType   CommissionType @map("incoming_commission_type")
+  incomingCommissionValue  Decimal        @map("incoming_commission_value") @db.Decimal(10, 3)
+  outgoingCommissionType   CommissionType @map("outgoing_commission_type")
+  outgoingCommissionValue  Decimal        @map("outgoing_commission_value") @db.Decimal(10, 3)
+
+  // Banking configuration
+  allowedIncomingBanks     String[]  @map("allowed_incoming_banks")
+  allowedOutgoingBanks     String[]  @map("allowed_outgoing_banks")
+
+  // Orders
+  orders           Order[]
+
+  @@map("exchanges")
+}
+
+model Order {
+  id                String           @id @default(cuid())
+  orderNumber       String           @unique @map("order_number") // TYYMMXXXX format
+  type              OrderType
+  status            OrderStatus      @default(SUBMITTED)
+  amount            Decimal          @db.Decimal(15, 3)
+  commission        Decimal          @default(0) @db.Decimal(15, 3)
+  netAmount         Decimal          @default(0) @db.Decimal(15, 3) @map("net_amount")
+  
+  // Common fields
+  senderName        String?          @map("sender_name")
+  recipientName     String?          @map("recipient_name")
+  bankName          String?          @map("bank_name")
+  
+  // Outgoing transfer specific fields
+  cliqBankAliasName    String?       @map("cliq_bank_alias_name")
+  cliqMobileNumber     String?       @map("cliq_mobile_number")
+  
+  // Status management
+  rejectionReason   String?          @map("rejection_reason")
+  cancellationReason String?         @map("cancellation_reason")
+  cancellationRequested Boolean      @default(false) @map("cancellation_requested")
+  
+  // File uploads
+  paymentProofUrl   String?          @map("payment_proof_url")
+  completionProofUrl String?         @map("completion_proof_url")
+  
+  // Timestamps
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  approvedAt        DateTime?        @map("approved_at")
+  completedAt       DateTime?        @map("completed_at")
+  
+  // Relations
+  exchangeId        String           @map("exchange_id")
+  exchange          Exchange         @relation(fields: [exchangeId], references: [id], onDelete: Cascade)
+  
+  // Messages
+  messages          OrderMessage[]
+
+  @@map("orders")
+}
+
+model OrderMessage {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  orderId   String   @map("order_id")
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  senderId  String   @map("sender_id")
+  sender    User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  
+  receiverId String  @map("receiver_id")
+  receiver   User    @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("order_messages")
+}
+
+// Configuration tables
+model Bank {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String?  @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("banks")
+}
+
+model DigitalWallet {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String?  @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("digital_wallets")
+}
+
+// System configuration
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_config")
+}
+
+// Order sequence tracking for ID generation
+model OrderSequence {
+  id       String @id @default(cuid())
+  year     Int
+  month    Int
+  sequence Int
+  
+  @@unique([year, month])
+  @@map("order_sequence")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  EXCHANGE
+}
+
+enum OrderType {
+  INCOMING
+  OUTGOING
+}
+
+enum OrderStatus {
+  SUBMITTED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum CommissionType {
+  FIXED
+  PERCENTAGE
+} 
