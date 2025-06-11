@@ -225,8 +225,11 @@ export default function AdminDashboard() {
               style={{ animationDelay: `${index * 100}ms` }}
             >
               <div className="flex flex-col h-full">
-                {/* Icon - Top Right */}
-                <div className="flex justify-end mb-2">
+                {/* Title and Icon - Inline */}
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs sm:text-sm lg:text-base font-medium text-gray-600 leading-tight">
+                    {card.title}
+                  </p>
                   <div className={`p-1.5 sm:p-2.5 lg:p-3 rounded-lg sm:rounded-xl bg-${card.color}-100 flex-shrink-0`}>
                     <Icon className={`w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-${card.color}-600`} />
                   </div>
@@ -234,11 +237,6 @@ export default function AdminDashboard() {
                 
                 {/* Content */}
                 <div className="flex-1">
-                  {/* Title */}
-                  <p className="text-xs sm:text-sm lg:text-base font-medium text-gray-600 mb-1 sm:mb-2 leading-tight">
-                    {card.title}
-                  </p>
-                  
                   {/* Value */}
                   <p className="text-lg sm:text-2xl lg:text-3xl font-bold text-gray-900 mb-2 sm:mb-3 leading-none break-words">
                     {card.value}
