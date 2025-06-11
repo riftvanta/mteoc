@@ -120,17 +120,56 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
+        // Adaptive cache timing based on device capabilities
         staleTime: adaptiveConfig.queryStaleTime,
-        retry: 1,
+        gcTime: adaptiveConfig.queryStaleTime * 2,
+        
+        // Retry configuration
+        retry: (failureCount, error) => {
+          // Don't retry 4xx errors (client errors)
+          if (error instanceof Error && error.message.includes('40')) {
+            return false
+          }
+          return failureCount < 2
+        },
+        retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+        
+        // Background refetching optimization
         refetchOnWindowFocus: false,
-        // Reduce background refetching on slow networks
-        refetchOnReconnect: !adaptiveConfig.queryStaleTime,
+        refetchOnReconnect: 'always',
+        refetchInterval: false, // Disable automatic refetching
+        
+        // Network-aware settings
+        networkMode: 'online',
+        
+        // Performance optimizations
+        structuralSharing: true,
+        throwOnError: false,
+        
+        // Meta information for debugging
+        meta: {
+          errorMessage: 'Failed to fetch data. Please try again.',
+        },
       },
       mutations: {
         retry: 1,
+        networkMode: 'online',
+        throwOnError: false,
+        meta: {
+          errorMessage: 'Failed to save changes. Please try again.',
+        },
       },
     },
   }))
+
+  // Cleanup old queries periodically
+  React.useEffect(() => {
+    const cleanup = setInterval(() => {
+      queryClient.getQueryCache().clear()
+    }, 10 * 60 * 1000) // Every 10 minutes
+    
+    return () => clearInterval(cleanup)
+  }, [queryClient])
 
   return (
     <QueryClientProvider client={queryClient}>

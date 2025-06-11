@@ -4,6 +4,7 @@ import React, { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { Building2, Shield, ArrowRight, LogOut } from 'lucide-react'
+import { InlineSpinner } from '@/components/admin/LoadingSpinner'
 
 export default function DashboardPage() {
   const { isAuthenticated, isAdmin, isExchange, exchangeName, logout, isLoading } = useAuth()
@@ -29,7 +30,7 @@ export default function DashboardPage() {
         <div className="max-w-md w-full">
           <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
             <div className="w-16 h-16 bg-jordan rounded-full flex items-center justify-center mx-auto mb-4">
-              <div className="loading-spinner w-6 h-6"></div>
+              <InlineSpinner size="md" className="text-white" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
               Loading Dashboard...

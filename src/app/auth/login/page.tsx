@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { useAuth } from '@/hooks/useAuth'
 import { Eye, EyeOff, Lock, User, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { InlineSpinner } from '@/components/admin/LoadingSpinner'
 
 // Validation schema
 const loginSchema = z.object({
@@ -71,7 +72,7 @@ export default function LoginPage() {
         <div className="max-w-md w-full">
           <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
             <div className="w-16 h-16 bg-jordan rounded-full flex items-center justify-center mx-auto mb-4">
-              <div className="loading-spinner w-6 h-6"></div>
+              <InlineSpinner size="md" className="text-white" />
             </div>
             <p className="text-gray-600">Checking authentication...</p>
           </div>
@@ -196,7 +197,7 @@ export default function LoginPage() {
             >
               {isLoading ? (
                 <>
-                  <div className="loading-spinner w-4 h-4 mr-2"></div>
+                  <InlineSpinner size="sm" className="mr-2" />
                   Signing In...
                 </>
               ) : (
