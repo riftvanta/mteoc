@@ -1,4 +1,4 @@
-import { format, utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz'
+import { format, toZonedTime, fromZonedTime } from 'date-fns-tz'
 
 export const JORDAN_TIMEZONE = 'Asia/Amman'
 
@@ -7,7 +7,7 @@ export const JORDAN_TIMEZONE = 'Asia/Amman'
  */
 export const toJordanTime = (date: Date | string): Date => {
   const inputDate = typeof date === 'string' ? new Date(date) : date
-  return utcToZonedTime(inputDate, JORDAN_TIMEZONE)
+  return toZonedTime(inputDate, JORDAN_TIMEZONE)
 }
 
 /**
@@ -15,7 +15,7 @@ export const toJordanTime = (date: Date | string): Date => {
  */
 export const fromJordanTime = (date: Date | string): Date => {
   const inputDate = typeof date === 'string' ? new Date(date) : date
-  return zonedTimeToUtc(inputDate, JORDAN_TIMEZONE)
+  return fromZonedTime(inputDate, JORDAN_TIMEZONE)
 }
 
 /**
