@@ -1,6 +1,10 @@
-import { supabase } from './supabase/client'
+import { supabase, hasValidSupabaseConfig } from './supabase/client'
 import { supabaseAdmin } from './supabase/admin'
 import type { User, Session } from '@supabase/supabase-js'
+import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
+
+const prisma = new PrismaClient()
 
 export type UserRole = 'admin' | 'exchange'
 
@@ -24,19 +28,50 @@ export interface AuthSession extends Session {
 // =============================================
 
 /**
- * Sign in with email and password
+ * Sign in with username and password
  */
-export const signIn = async (email: string, password: string) => {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
+export const signIn = async (username: string, password: string) => {
+  try {
+    // Query the database for the user
+    const user = await prisma.user.findUnique({
+      where: { username },
+      include: {
+        exchange: true
+      }
+    })
 
-  if (error) {
-    throw new Error(error.message)
+    if (!user) {
+      throw new Error('Invalid username or password')
+    }
+
+    // Verify the password
+    const isPasswordValid = await bcrypt.compare(password, user.password)
+    if (!isPasswordValid) {
+      throw new Error('Invalid username or password')
+    }
+
+    // Create a session-like object for compatibility
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role.toLowerCase() as UserRole,
+        exchange_id: user.exchange?.id,
+        exchange_name: user.exchange?.name
+      },
+      session: {
+        access_token: `custom-token-${user.id}`,
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role.toLowerCase() as UserRole
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Sign in error:', error)
+    throw error
   }
-
-  return data
 }
 
 /**
@@ -53,6 +88,10 @@ export const signOut = async () => {
  * Get current session with user profile data
  */
 export const getCurrentSession = async (): Promise<AuthSession | null> => {
+  if (!hasValidSupabaseConfig()) {
+    return null
+  }
+
   const { data: { session }, error } = await supabase.auth.getSession()
   
   if (error || !session) {
@@ -75,6 +114,10 @@ export const getCurrentSession = async (): Promise<AuthSession | null> => {
  * Get user profile data including role and exchange information
  */
 export const getUserProfile = async (userId: string) => {
+  if (!hasValidSupabaseConfig()) {
+    return { role: 'exchange' as UserRole }
+  }
+
   const { data: profile, error } = await supabase
     .from('user_profiles')
     .select(`

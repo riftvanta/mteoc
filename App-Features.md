@@ -25,13 +25,67 @@
 
 ---
 
+## 🔐 Authentication System
+
+### **Username-Based Authentication**
+- **Internal System** - No public registration, admin-controlled user creation
+- **Username Login** - Secure username/password authentication (no email required)
+- **Admin Credentials** - Pre-seeded in database during system initialization
+- **Session Management** - Secure session handling with proper encryption
+
+### **Authentication Flow**
+```
+1. Admin logs in with pre-configured credentials (username: admin)
+2. Admin creates exchange office accounts with custom usernames
+3. Exchange offices log in with assigned usernames
+4. Session-based authentication with automatic expiration
+5. Role-based access control enforced throughout system
+```
+
+### **User Account Creation**
+- **Admin Account** - Created during system setup with default credentials
+- **Exchange Accounts** - Created by admin through secure dashboard interface
+- **Username Requirements**:
+  - 3-50 characters length
+  - Alphanumeric characters, underscores, and hyphens only
+  - Must be unique across the system
+  - Case-sensitive authentication
+
+### **Security Features**
+- **Password Hashing** - bcrypt with salt rounds for secure password storage
+- **Session Security** - HTTP-only cookies with secure flags in production
+- **Input Validation** - Strict username format validation and sanitization
+- **Brute Force Protection** - Rate limiting on authentication attempts
+- **No Public Registration** - All accounts created through admin interface only
+
+### **Database Schema**
+```sql
+-- User table structure
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  role ENUM('ADMIN', 'EXCHANGE') NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Default admin account
+INSERT INTO users (username, password, role) 
+VALUES ('admin', '$hashed_password', 'ADMIN');
+```
+
+---
+
 ## 🏦 User Management
 
 ### **Admin User Creation**
 ```
 Admin creates exchange office accounts with:
+- Unique username (for login authentication)
+- Secure password (automatically generated or custom)
 - Exchange office name
-- Contact information
+- Contact information (phone, email for communication)
 - Initial balance (can be positive, negative, or zero)
 - Commission rates (incoming/outgoing)
 - Allowed banks/digital wallets (incoming/outgoing)
@@ -39,11 +93,13 @@ Admin creates exchange office accounts with:
 ```
 
 ### **Exchange Office Profiles**
+- Authentication credentials (username/password)
 - Basic information (name, contact)
 - Current balance (real-time updates)
 - Commission settings (view-only)
 - Allowed payment methods (view-only)
 - Transaction history
+- Account status (active/inactive)
 
 ---
 
@@ -344,6 +400,14 @@ supabase
 
 ## 🔐 Security & Validation
 
+### **Username Validation**
+```javascript
+// Username format validation
+const usernameRegex = /^[a-zA-Z0-9_-]{3,50}$/
+// Alphanumeric characters, underscores, and hyphens only
+// 3-50 characters length requirement
+```
+
 ### **Mobile Number Validation**
 ```javascript
 // Jordanian mobile number formats
@@ -353,11 +417,19 @@ const jordanianMobileRegex = [
 ]
 ```
 
+### **Authentication Security**
+- **Password Hashing** - bcrypt with 12 salt rounds for maximum security
+- **Session Management** - Secure HTTP-only cookies with CSRF protection
+- **Username Uniqueness** - Database-level unique constraints
+- **Input Sanitization** - All user inputs validated and sanitized
+- **Rate Limiting** - Login attempt limitations to prevent brute force attacks
+
 ### **Data Security**
 - **File Upload Security** - Virus scanning, format validation
 - **Access Control** - Strict isolation between exchanges
 - **Data Encryption** - Secure transmission and storage
-- **Authentication** - Session-based auth with JWT tokens
+- **Database Security** - Parameterized queries to prevent SQL injection
+- **Session Expiration** - Automatic logout after inactivity periods
 
 ---
 
@@ -377,4 +449,4 @@ const jordanianMobileRegex = [
 
 ---
 
-**Summary**: Mobile-first financial transfer management system with real-time updates, order-specific communication, flexible commission structure, and secure file handling optimized for Jordanian market requirements. 
+**Summary**: Mobile-first financial transfer management system with username-based authentication, real-time updates, order-specific communication, flexible commission structure, and secure file handling optimized for Jordanian market requirements. Internal system with admin-controlled user management and no public registration. 

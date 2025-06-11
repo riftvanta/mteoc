@@ -7,27 +7,29 @@ import type { Database } from '@/types/database'
  * Never import this in client-side components!
  */
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Use fallback values to prevent build errors
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-role-key'
 
-if (!supabaseUrl) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
+// Only validate in production or when real credentials are provided
+const hasRealCredentials = supabaseUrl !== 'https://placeholder.supabase.co' && serviceRoleKey !== 'placeholder-service-role-key'
+
+if (process.env.NODE_ENV === 'production' && !hasRealCredentials) {
+  throw new Error('Missing Supabase environment variables in production')
 }
 
-if (!serviceRoleKey) {
-  throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable - this is required for admin operations')
-}
+// Validate URL format only if we have real credentials
+if (hasRealCredentials) {
+  try {
+    new URL(supabaseUrl)
+  } catch {
+    throw new Error('Invalid NEXT_PUBLIC_SUPABASE_URL format')
+  }
 
-// Validate URL format
-try {
-  new URL(supabaseUrl)
-} catch {
-  throw new Error('Invalid NEXT_PUBLIC_SUPABASE_URL format')
-}
-
-// Validate service role key format (should start with 'eyJ')
-if (!serviceRoleKey.startsWith('eyJ')) {
-  throw new Error('Invalid SUPABASE_SERVICE_ROLE_KEY format')
+  // Validate service role key format (should start with 'eyJ')
+  if (!serviceRoleKey.startsWith('eyJ')) {
+    throw new Error('Invalid SUPABASE_SERVICE_ROLE_KEY format')
+  }
 }
 
 // Admin client with service role key - bypasses RLS

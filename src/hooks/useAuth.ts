@@ -1,48 +1,27 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useSupabase } from '@/lib/supabase/provider'
-import { signIn, signOut, getCurrentSession, type AuthUser, type UserRole } from '@/lib/auth'
+import { useEffect } from 'react'
+import { useSupabase } from '@/components/providers'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
+
+export type UserRole = 'admin' | 'exchange'
 
 /**
  * Custom hook for authentication state and actions
  * Provides easy access to auth state and login/logout functionality
  */
 export const useAuth = () => {
-  const { user, session, isLoading } = useSupabase()
-  const [userProfile, setUserProfile] = useState<AuthUser | null>(null)
-  const [profileLoading, setProfileLoading] = useState(true)
+  const { user, session, isLoading, login: authLogin, logout: authLogout } = useSupabase()
   const router = useRouter()
 
-  // Load user profile data when session changes
-  useEffect(() => {
-    const loadUserProfile = async () => {
-      if (session?.user) {
-        try {
-          const authSession = await getCurrentSession()
-          setUserProfile(authSession?.user || null)
-        } catch (error) {
-          console.error('Error loading user profile:', error)
-          setUserProfile(null)
-        }
-      } else {
-        setUserProfile(null)
-      }
-      setProfileLoading(false)
-    }
-
-    loadUserProfile()
-  }, [session])
-
   // Login function
-  const login = async (email: string, password: string) => {
+  const login = async (username: string, password: string) => {
     try {
-      await signIn(email, password)
+      await authLogin(username, password)
       toast.success('Welcome back!')
       
-      // Redirect based on user role (will be determined after profile loads)
+      // Redirect based on user role after login
       setTimeout(() => {
         router.push('/dashboard')
       }, 500)
@@ -55,8 +34,7 @@ export const useAuth = () => {
   // Logout function
   const logout = async () => {
     try {
-      await signOut()
-      setUserProfile(null)
+      authLogout()
       toast.success('Logged out successfully')
       router.push('/auth/login')
     } catch (error) {
@@ -66,23 +44,23 @@ export const useAuth = () => {
   }
 
   // Role-based checks
-  const isAdmin = userProfile?.role === 'admin'
-  const isExchange = userProfile?.role === 'exchange'
-  const isAuthenticated = !!userProfile
+  const isAdmin = user?.role === 'admin'
+  const isExchange = user?.role === 'exchange'
+  const isAuthenticated = !!user
 
   return {
     // State
-    user: userProfile,
+    user,
     session,
-    isLoading: isLoading || profileLoading,
+    isLoading,
     isAuthenticated,
     isAdmin,
     isExchange,
     
     // User info
-    role: userProfile?.role,
-    exchangeId: userProfile?.exchange_id,
-    exchangeName: userProfile?.exchange_name,
+    role: user?.role,
+    exchangeId: user?.exchange_id,
+    exchangeName: user?.exchange_name,
     
     // Actions
     login,
