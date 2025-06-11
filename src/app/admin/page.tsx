@@ -215,53 +215,53 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats Cards - Optimized for Mobile */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
         {statCards.map((card, index) => {
           const Icon = card.icon
           return (
             <div 
               key={index} 
-              className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 hover:shadow-lg transition-all duration-200 transform hover:scale-[1.02] animate-slide-up min-h-[140px] sm:min-h-[160px]"
+              className="bg-white rounded-xl border border-gray-200 p-3 sm:p-5 lg:p-6 hover:shadow-lg transition-all duration-200 transform hover:scale-[1.02] animate-slide-up min-h-[120px] sm:min-h-[140px] lg:min-h-[160px]"
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              <div className="flex items-start justify-between h-full">
-                <div className="flex-1 min-w-0">
+              <div className="flex flex-col h-full">
+                {/* Icon - Top Right */}
+                <div className="flex justify-end mb-2">
+                  <div className={`p-1.5 sm:p-2.5 lg:p-3 rounded-lg sm:rounded-xl bg-${card.color}-100 flex-shrink-0`}>
+                    <Icon className={`w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-${card.color}-600`} />
+                  </div>
+                </div>
+                
+                {/* Content */}
+                <div className="flex-1">
                   {/* Title */}
-                  <p className="text-sm sm:text-base font-medium text-gray-600 mb-2 leading-tight">
+                  <p className="text-xs sm:text-sm lg:text-base font-medium text-gray-600 mb-1 sm:mb-2 leading-tight">
                     {card.title}
                   </p>
                   
                   {/* Value */}
-                  <p className="text-2xl sm:text-3xl lg:text-2xl font-bold text-gray-900 mb-3 leading-none break-words">
+                  <p className="text-lg sm:text-2xl lg:text-3xl font-bold text-gray-900 mb-2 sm:mb-3 leading-none break-words">
                     {card.value}
                   </p>
-                  
-                  {/* Change Indicator */}
-                  <div className="flex items-center justify-start">
-                    <div className="flex items-center">
-                      {card.changeType === 'positive' ? (
-                        <ArrowUpRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 mr-1.5 flex-shrink-0" />
-                      ) : (
-                        <ArrowDownRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500 mr-1.5 flex-shrink-0" />
-                      )}
-                      <span className={`text-sm sm:text-base font-semibold ${
-                        card.changeType === 'positive' ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {card.change}
-                      </span>
-                    </div>
-                    <span className="text-xs sm:text-sm text-gray-500 ml-1.5 hidden sm:inline">
-                      vs last week
-                    </span>
-                    <span className="text-xs text-gray-500 ml-1.5 sm:hidden">
-                      vs last week
-                    </span>
-                  </div>
                 </div>
                 
-                {/* Icon */}
-                <div className={`p-2.5 sm:p-3 rounded-xl bg-${card.color}-100 flex-shrink-0 ml-3`}>
-                  <Icon className={`w-5 h-5 sm:w-6 sm:h-6 text-${card.color}-600`} />
+                {/* Change Indicator - Bottom */}
+                <div className="flex items-center justify-start mt-auto">
+                  <div className="flex items-center">
+                    {card.changeType === 'positive' ? (
+                      <ArrowUpRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 lg:w-4 lg:h-4 text-green-500 mr-1 sm:mr-1.5 flex-shrink-0" />
+                    ) : (
+                      <ArrowDownRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 lg:w-4 lg:h-4 text-red-500 mr-1 sm:mr-1.5 flex-shrink-0" />
+                    )}
+                    <span className={`text-xs sm:text-sm lg:text-base font-semibold ${
+                      card.changeType === 'positive' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {card.change}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-500 ml-1 sm:ml-1.5 hidden sm:inline">
+                    vs last week
+                  </span>
                 </div>
               </div>
             </div>
