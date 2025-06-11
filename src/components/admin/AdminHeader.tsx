@@ -40,6 +40,16 @@ export function AdminHeader() {
     { id: 3, message: 'New exchange registration', time: '10 min ago', type: 'user' },
   ]
 
+  // Dynamic positioning for notifications dropdown
+  const getNotificationDropdownClasses = () => {
+    // On mobile, use a more centered approach
+    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+      return "absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-sm bg-white rounded-lg shadow-xl border border-gray-200 z-50 transform -translate-x-2"
+    }
+    // On larger screens, use standard right alignment with viewport constraint
+    return "absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-w-[calc(100vw-2rem)]"
+  }
+
   return (
     <>
       {/* Fixed Header */}
@@ -89,20 +99,20 @@ export function AdminHeader() {
               
               {/* Notifications Dropdown */}
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                  <div className="p-4 border-b border-gray-200">
-                    <h3 className="text-lg font-medium text-gray-900">Notifications</h3>
+                <div className={getNotificationDropdownClasses()}>
+                  <div className="p-3 sm:p-4 border-b border-gray-200">
+                    <h3 className="text-base sm:text-lg font-medium text-gray-900">Notifications</h3>
                   </div>
-                  <div className="max-h-64 overflow-y-auto">
+                  <div className="max-h-60 sm:max-h-64 overflow-y-auto">
                     {notifications.map((notification) => (
-                      <div key={notification.id} className="p-4 border-b border-gray-100 hover:bg-gray-50">
-                        <p className="text-sm text-gray-900">{notification.message}</p>
+                      <div key={notification.id} className="p-3 sm:p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
+                        <p className="text-sm text-gray-900 leading-relaxed">{notification.message}</p>
                         <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
                       </div>
                     ))}
                   </div>
                   <div className="p-3 text-center border-t border-gray-200">
-                    <button className="text-sm text-jordan hover:text-jordan-dark font-medium">
+                    <button className="text-sm text-jordan hover:text-jordan-dark font-medium transition-colors duration-150">
                       View all notifications
                     </button>
                   </div>
