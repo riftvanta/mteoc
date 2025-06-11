@@ -1,28 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { optimizedDb } from '@/lib/optimized-db'
+import { directDb } from '@/lib/direct-db'
 
 export async function GET(request: NextRequest) {
   try {
-    // Test connection first with cached health check
-    const isConnected = await optimizedDb.testConnection()
-    if (!isConnected) {
-      return NextResponse.json(
-        { 
-          error: 'Database connection unavailable',
-          details: 'Unable to connect to database'
-        },
-        { status: 503 }
-      )
-    }
-
-    // Get dashboard stats using optimized database with caching
-    const stats = await optimizedDb.getDashboardStats()
-    
-    // Add performance metrics in development
-    if (process.env.NODE_ENV === 'development') {
-      const perfStats = optimizedDb.getPerformanceStats()
-      console.log('Dashboard stats performance:', perfStats)
-    }
+    // Get dashboard stats using direct database
+    const stats = await directDb.getDashboardStats()
     
     return NextResponse.json(stats, {
       headers: {

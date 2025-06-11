@@ -39,8 +39,8 @@ export interface Database {
         Row: {
           id: string
           name: string
-          contact_email: string | null
-          contact_phone: string | null
+          contactEmail: string | null
+          contactPhone: string | null
           balance: string
           created_at: string
           updated_at: string
@@ -55,8 +55,8 @@ export interface Database {
         Insert: {
           id?: string
           name: string
-          contact_email?: string | null
-          contact_phone?: string | null
+          contactEmail?: string | null
+          contactPhone?: string | null
           balance?: string
           created_at?: string
           updated_at?: string
@@ -71,8 +71,8 @@ export interface Database {
         Update: {
           id?: string
           name?: string
-          contact_email?: string | null
-          contact_phone?: string | null
+          contactEmail?: string | null
+          contactPhone?: string | null
           balance?: string
           created_at?: string
           updated_at?: string
