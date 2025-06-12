@@ -166,6 +166,10 @@ async function main() {
   
   const exchangeList = await prisma.exchange.findMany({ include: { user: true } })
   
+  // Sample base64 image data (small 1x1 pixel images for demo)
+  const sampleBase64Payment = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+  const sampleBase64Completion = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+  
   const sampleOrders = [
     {
       orderNumber: 'T25010045',
@@ -190,7 +194,7 @@ async function main() {
       netAmount: 872.69,
       senderName: 'Sarah Mohammed',
       bankName: 'Jordan Ahli Bank',
-      paymentProofUrl: '/uploads/proof-123.jpg',
+      paymentProofUrl: sampleBase64Payment,
       exchangeId: exchangeList[1]?.id,
       createdAt: new Date('2025-01-15T09:45:00Z'),
       approvedAt: new Date('2025-01-15T10:00:00Z'),
@@ -206,7 +210,7 @@ async function main() {
       bankName: 'Bank of Jordan',
       cliqBankAliasName: 'Mohammed.B',
       cliqMobileNumber: '0078987654',
-      completionProofUrl: '/uploads/completion-456.jpg',
+      completionProofUrl: sampleBase64Completion,
       exchangeId: exchangeList[2]?.id,
       createdAt: new Date('2025-01-15T08:20:00Z'),
       approvedAt: new Date('2025-01-15T08:35:00Z'),

@@ -21,7 +21,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useExchangeOptimisticUpdates } from '@/hooks/useExchangeQueries'
 import { calculateCommission, calculateOutgoingNetAmount, calculateIncomingNetAmount } from '@/utils/financial'
 import { jordanianMobileSchema, amountSchema } from '@/utils/validation'
-import { uploadPaymentProof, captureFromCamera } from '@/utils/file-upload'
+import { uploadPaymentProofSimple, captureFromCamera } from '@/utils/simple-file-upload'
 import { toast } from 'react-hot-toast'
 
 interface OrderFormData {
@@ -227,19 +227,19 @@ export default function NewOrderPage() {
       // For incoming transfers, upload payment proof first if provided
       let paymentProofUrl = ''
       if (formData.type === 'INCOMING' && formData.paymentProof) {
-        toast.loading('Uploading payment proof...', { id: 'upload' })
+        toast.loading('Processing payment proof...', { id: 'upload' })
         
-        // Upload payment proof to Supabase Storage
-        const uploadResult = await uploadPaymentProof(formData.paymentProof, `temp_${Date.now()}`)
-        
-        toast.dismiss('upload')
+        // Convert payment proof to base64
+        const uploadResult = await uploadPaymentProofSimple(formData.paymentProof)
         
         if (!uploadResult.success) {
-          throw new Error(uploadResult.error || 'Failed to upload payment proof')
+          throw new Error(uploadResult.error || 'Failed to process payment proof')
         }
         
-        paymentProofUrl = uploadResult.url || ''
-        toast.success('Payment proof uploaded successfully')
+        paymentProofUrl = uploadResult.base64Data || ''
+        
+        toast.dismiss('upload')
+        toast.success('Payment proof processed successfully')
       }
 
       // Create order

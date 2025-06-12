@@ -30,6 +30,7 @@ import { LoadingSpinner } from '@/components/admin/LoadingSpinner'
 import { useExchangeOrder } from '@/hooks/useExchangeQueries'
 import { useAuth } from '@/hooks/useAuth'
 import { formatJordanTime } from '@/utils/timezone'
+import ScreenshotViewer from '@/components/ScreenshotViewer'
 
 interface OrderMessage {
   id: string
@@ -368,46 +369,30 @@ export default function ExchangeOrderDetailsPage() {
               </div>
             </div>
 
-            {/* Files */}
+            {/* Screenshots */}
             {(order.paymentProofUrl || order.completionProofUrl) && (
               <div className="mt-6 pt-6 border-t border-gray-200">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">Attachments</h3>
-                <div className="space-y-2">
+                <h3 className="text-sm font-medium text-gray-900 mb-4">Screenshots</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {order.paymentProofUrl && (
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        <Paperclip className="w-4 h-4 text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">Payment Proof</span>
-                      </div>
-                      <button
-                        onClick={() => handleDownload(order.paymentProofUrl!, 'payment_proof.png')}
-                        className="text-jordan hover:text-jordan-dark text-sm font-medium"
-                      >
-                        Download
-                      </button>
-                    </div>
+                    <ScreenshotViewer
+                      base64Data={order.paymentProofUrl}
+                      title="Payment Proof"
+                      filename={`payment_proof_${order.orderNumber}.jpg`}
+                      type="payment-proof"
+                      showDownload={true}
+                      showShare={false}
+                    />
                   )}
                   {order.completionProofUrl && (
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        <Paperclip className="w-4 h-4 text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">Completion Screenshot</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => handleDownload(order.completionProofUrl!, `${order.orderNumber}_screenshot.png`)}
-                          className="text-jordan hover:text-jordan-dark text-sm font-medium"
-                        >
-                          Download
-                        </button>
-                        <button
-                          onClick={handleWhatsAppShare}
-                          className="text-green-600 hover:text-green-700 text-sm font-medium"
-                        >
-                          Share
-                        </button>
-                      </div>
-                    </div>
+                    <ScreenshotViewer
+                      base64Data={order.completionProofUrl}
+                      title="Completion Screenshot"
+                      filename={`completion_${order.orderNumber}.jpg`}
+                      type="completion-proof"
+                      showDownload={order.canDownload}
+                      showShare={order.canDownload}
+                    />
                   )}
                 </div>
               </div>

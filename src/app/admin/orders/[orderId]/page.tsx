@@ -28,6 +28,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { LoadingSpinner } from '@/components/admin/LoadingSpinner'
 import { formatJordanTime } from '@/utils/timezone'
+import ScreenshotViewer from '@/components/ScreenshotViewer'
 
 interface OrderDetails {
   id: string
@@ -516,43 +517,31 @@ export default function AdminOrderDetailsPage() {
               </div>
             </div>
 
-            {/* Files */}
+            {/* Screenshots */}
             {(order.paymentProofUrl || order.completionProofUrl) && (
               <div className="border-t pt-4 mt-4">
-                <h3 className="font-medium text-gray-900 mb-3">Attachments</h3>
-                <div className="space-y-2">
+                <h3 className="font-medium text-gray-900 mb-4">Screenshots</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {order.paymentProofUrl && (
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        <FileText className="w-4 h-4 text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">Payment Proof</span>
-                      </div>
-                      <a
-                        href={order.paymentProofUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-jordan hover:text-jordan-dark text-sm font-medium"
-                      >
-                        View
-                      </a>
-                    </div>
+                    <ScreenshotViewer
+                      base64Data={order.paymentProofUrl}
+                      title="Payment Proof"
+                      filename={`payment_proof_${order.orderNumber}.jpg`}
+                      type="payment-proof"
+                      showDownload={true}
+                      showShare={false}
+                    />
                   )}
                   
                   {order.completionProofUrl && (
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        <FileText className="w-4 h-4 text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">Completion Proof</span>
-                      </div>
-                      <a
-                        href={order.completionProofUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-jordan hover:text-jordan-dark text-sm font-medium"
-                      >
-                        View
-                      </a>
-                    </div>
+                    <ScreenshotViewer
+                      base64Data={order.completionProofUrl}
+                      title="Completion Screenshot"
+                      filename={`completion_${order.orderNumber}.jpg`}
+                      type="completion-proof"
+                      showDownload={true}
+                      showShare={true}
+                    />
                   )}
                 </div>
               </div>
