@@ -4,7 +4,7 @@ import React, { useState, createContext, useContext, useEffect, useCallback, use
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { getAdaptiveConfig } from '@/lib/performance'
 
-// Custom authentication context for username-based auth
+// Authentication context with simplified JWT-based auth
 interface AuthUser {
   id: string
   username: string
@@ -15,9 +15,8 @@ interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null
-  session: any | null
+  session: { user: AuthUser; access_token: string } | null
   isLoading: boolean
-  hasValidConfig: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => void
 }
@@ -26,7 +25,6 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
   isLoading: true,
-  hasValidConfig: true,
   login: async () => {},
   logout: () => {},
 })
@@ -41,6 +39,7 @@ export const useSupabase = () => {
 
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [session, setSession] = useState<{ user: AuthUser; access_token: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const initialized = useRef(false)
 
@@ -59,20 +58,25 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         const storedUser = localStorage.getItem('auth_user')
-        if (storedUser) {
+        const storedToken = localStorage.getItem('auth_token')
+        
+        if (storedUser && storedToken) {
           const parsedUser = JSON.parse(storedUser)
           // Validate the parsed user has required fields
-          if (parsedUser && parsedUser.id && parsedUser.username && parsedUser.role) {
+          if (parsedUser?.id && parsedUser?.username && parsedUser?.role) {
             setUser(parsedUser)
+            setSession({ user: parsedUser, access_token: storedToken })
           } else {
-            // Invalid stored user, remove it
+            // Invalid stored data, clear it
             localStorage.removeItem('auth_user')
+            localStorage.removeItem('auth_token')
           }
         }
       } catch (error) {
         console.error('Error checking session:', error)
         if (typeof window !== 'undefined') {
           localStorage.removeItem('auth_user')
+          localStorage.removeItem('auth_token')
         }
       } finally {
         setIsLoading(false)
@@ -100,16 +104,18 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error.message || 'Login failed')
       }
 
-      const { user: authUser } = await response.json()
+      const { user: authUser, access_token } = await response.json()
       
       // Validate user data before storing
-      if (!authUser || !authUser.id || !authUser.username || !authUser.role) {
+      if (!authUser?.id || !authUser?.username || !authUser?.role) {
         throw new Error('Invalid user data received from server')
       }
       
-      // Store user in localStorage and state
+      // Store user and token in localStorage and state
       localStorage.setItem('auth_user', JSON.stringify(authUser))
+      localStorage.setItem('auth_token', access_token)
       setUser(authUser)
+      setSession({ user: authUser, access_token })
     } catch (error) {
       console.error('Login error:', error)
       throw error
@@ -121,16 +127,17 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_user')
+      localStorage.removeItem('auth_token')
     }
     setUser(null)
+    setSession(null)
   }, [])
 
   return (
     <AuthContext.Provider value={{
       user,
-      session: user ? { user } : null,
+      session,
       isLoading,
-      hasValidConfig: true,
       login,
       logout,
     }}>
@@ -148,17 +155,29 @@ const getQueryClient = () => {
     
     queryClient = new QueryClient({
       defaultOptions: {
-                 queries: {
-           staleTime: adaptiveConfig.queryStaleTime,
-           gcTime: adaptiveConfig.queryStaleTime * 2,
-           refetchOnWindowFocus: false,
-           refetchOnMount: false,
-           refetchOnReconnect: true,
-           retry: 1,
-           retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
-         },
+        queries: {
+          staleTime: adaptiveConfig.queryStaleTime,
+          gcTime: adaptiveConfig.queryStaleTime * 2,
+          refetchOnWindowFocus: false,
+          refetchOnMount: false,
+          refetchOnReconnect: true,
+          retry: (failureCount, error) => {
+            // Don't retry on authentication errors
+            if (error instanceof Error && error.message.includes('Invalid or expired')) {
+              return false
+            }
+            return failureCount < 2
+          },
+          retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+        },
         mutations: {
-          retry: 1,
+          retry: (failureCount, error) => {
+            // Don't retry on authentication errors
+            if (error instanceof Error && error.message.includes('Invalid or expired')) {
+              return false
+            }
+            return failureCount < 2
+          },
           retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
         },
       },

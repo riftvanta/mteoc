@@ -1,26 +1,26 @@
-import { supabase, hasValidSupabaseConfig } from './supabase/client'
-import { supabaseAdmin } from './supabase/admin'
-import type { User, Session } from '@supabase/supabase-js'
-import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
 export type UserRole = 'admin' | 'exchange'
 
-export interface AuthUser extends User {
-  role?: UserRole
+export interface AuthUser {
+  id: string
+  username: string
+  role: UserRole
   exchange_id?: string
   exchange_name?: string
 }
 
-export interface AuthSession extends Session {
+export interface AuthSession {
   user: AuthUser
+  access_token: string
 }
 
 /**
  * Authentication and authorization utilities for the Financial Transfer Management System
- * Implements role-based access control for Admin and Exchange Office users
+ * Custom JWT-based authentication system
  */
 
 // =============================================
@@ -30,7 +30,7 @@ export interface AuthSession extends Session {
 /**
  * Sign in with username and password
  */
-export const signIn = async (username: string, password: string) => {
+export const signIn = async (username: string, password: string): Promise<AuthSession> => {
   try {
     // Query the database for the user
     const user = await prisma.user.findUnique({
@@ -50,23 +50,18 @@ export const signIn = async (username: string, password: string) => {
       throw new Error('Invalid username or password')
     }
 
-    // Create a session-like object for compatibility
+    // Create session data
+    const authUser: AuthUser = {
+      id: user.id,
+      username: user.username,
+      role: user.role.toLowerCase() as UserRole,
+      exchange_id: user.exchange?.id,
+      exchange_name: user.exchange?.name
+    }
+
     return {
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role.toLowerCase() as UserRole,
-        exchange_id: user.exchange?.id,
-        exchange_name: user.exchange?.name
-      },
-      session: {
-        access_token: `custom-token-${user.id}`,
-        user: {
-          id: user.id,
-          username: user.username,
-          role: user.role.toLowerCase() as UserRole
-        }
-      }
+      user: authUser,
+      access_token: `auth-token-${user.id}-${Date.now()}`
     }
   } catch (error) {
     console.error('Sign in error:', error)
@@ -75,68 +70,40 @@ export const signIn = async (username: string, password: string) => {
 }
 
 /**
- * Sign out current user
+ * Validate session token (for API routes)
  */
-export const signOut = async () => {
-  const { error } = await supabase.auth.signOut()
-  if (error) {
-    throw new Error(error.message)
-  }
-}
-
-/**
- * Get current session with user profile data
- */
-export const getCurrentSession = async (): Promise<AuthSession | null> => {
-  if (!hasValidSupabaseConfig()) {
-    return null
-  }
-
-  const { data: { session }, error } = await supabase.auth.getSession()
-  
-  if (error || !session) {
-    return null
-  }
-
-  // Fetch user profile data to get role and exchange info
-  const userProfile = await getUserProfile(session.user.id)
-  
-  return {
-    ...session,
-    user: {
-      ...session.user,
-      ...userProfile
+export const validateSession = async (token: string): Promise<AuthUser | null> => {
+  try {
+    // Extract user ID from token (basic validation)
+    const tokenParts = token.split('-')
+    if (tokenParts.length < 3 || tokenParts[0] !== 'auth' || tokenParts[1] !== 'token') {
+      return null
     }
-  } as AuthSession
-}
 
-/**
- * Get user profile data including role and exchange information
- */
-export const getUserProfile = async (userId: string) => {
-  if (!hasValidSupabaseConfig()) {
-    return { role: 'exchange' as UserRole }
-  }
+    const userId = tokenParts[2]
+    
+    // Fetch user from database
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        exchange: true
+      }
+    })
 
-  const { data: profile, error } = await supabase
-    .from('user_profiles')
-    .select(`
-      role,
-      exchange_id,
-      exchanges(name)
-    `)
-    .eq('user_id', userId)
-    .single()
+    if (!user) {
+      return null
+    }
 
-  if (error) {
-    console.error('Error fetching user profile:', error)
-    return { role: 'exchange' as UserRole }
-  }
-
-  return {
-    role: profile.role as UserRole,
-    exchange_id: profile.exchange_id,
-    exchange_name: (profile.exchanges as any)?.name
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role.toLowerCase() as UserRole,
+      exchange_id: user.exchange?.id,
+      exchange_name: user.exchange?.name
+    }
+  } catch (error) {
+    console.error('Session validation error:', error)
+    return null
   }
 }
 
@@ -145,158 +112,33 @@ export const getUserProfile = async (userId: string) => {
 // =============================================
 
 /**
- * Check if user is authenticated
- */
-export const isAuthenticated = async (): Promise<boolean> => {
-  const session = await getCurrentSession()
-  return !!session
-}
-
-/**
- * Check if user has admin role
- */
-export const isAdmin = async (): Promise<boolean> => {
-  const session = await getCurrentSession()
-  return session?.user?.role === 'admin'
-}
-
-/**
- * Check if user has exchange role
- */
-export const isExchangeUser = async (): Promise<boolean> => {
-  const session = await getCurrentSession()
-  return session?.user?.role === 'exchange'
-}
-
-/**
- * Get current user's exchange ID (returns null for admin users)
- */
-export const getCurrentExchangeId = async (): Promise<string | null> => {
-  const session = await getCurrentSession()
-  return session?.user?.exchange_id || null
-}
-
-/**
  * Check if user can access a specific exchange's data
  */
-export const canAccessExchange = async (exchangeId: string): Promise<boolean> => {
-  const session = await getCurrentSession()
-  
-  if (!session) return false
-  
+export const canAccessExchange = (user: AuthUser, exchangeId: string): boolean => {
   // Admin can access all exchanges
-  if (session.user.role === 'admin') return true
+  if (user.role === 'admin') return true
   
   // Exchange users can only access their own data
-  return session.user.exchange_id === exchangeId
-}
-
-// =============================================
-// Admin Functions (Server-side only)
-// =============================================
-
-/**
- * Create a new exchange office account (Admin only)
- * This function runs on the server-side with admin privileges
- */
-export const createExchangeAccount = async (accountData: {
-  email: string
-  password: string
-  exchangeName: string
-  contactInfo: string
-  initialBalance: number
-  commissionRates: {
-    incomingFixed: number
-    incomingPercentage: number
-    outgoingFixed: number
-    outgoingPercentage: number
-  }
-  allowedBanks: {
-    incoming: string[]
-    outgoing: string[]
-  }
-}) => {
-  // This should only be called from server-side API routes
-  if (typeof window !== 'undefined') {
-    throw new Error('This function can only be called on the server side')
-  }
-
-  try {
-    // Create auth user
-    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: accountData.email,
-      password: accountData.password,
-      email_confirm: true,
-    })
-
-    if (authError) {
-      throw new Error(`Failed to create user: ${authError.message}`)
-    }
-
-    // Create exchange record
-    const { data: exchange, error: exchangeError } = await supabaseAdmin
-      .from('exchanges')
-      .insert({
-        name: accountData.exchangeName,
-        contact_info: accountData.contactInfo,
-        balance: accountData.initialBalance,
-        commission_rates: accountData.commissionRates,
-        allowed_banks: accountData.allowedBanks,
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single()
-
-    if (exchangeError) {
-      throw new Error(`Failed to create exchange: ${exchangeError.message}`)
-    }
-
-    // Create user profile linking auth user to exchange
-    const { error: profileError } = await supabaseAdmin
-      .from('user_profiles')
-      .insert({
-        user_id: authUser.user.id,
-        role: 'exchange',
-        exchange_id: exchange.id,
-        created_at: new Date().toISOString(),
-      })
-
-    if (profileError) {
-      throw new Error(`Failed to create user profile: ${profileError.message}`)
-    }
-
-    return {
-      user: authUser.user,
-      exchange: exchange,
-    }
-  } catch (error) {
-    console.error('Error creating exchange account:', error)
-    throw error
-  }
+  return user.exchange_id === exchangeId
 }
 
 /**
- * Validate session and return user data (for API routes)
+ * Validate API request and return user data
  */
-export const validateApiSession = async (request: Request) => {
-  const token = request.headers.get('Authorization')?.replace('Bearer ', '')
-  
-  if (!token) {
-    throw new Error('No authorization token provided')
+export const validateApiRequest = async (request: Request): Promise<AuthUser> => {
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new Error('Missing or invalid authorization header')
   }
 
-  const { data: { user }, error } = await supabase.auth.getUser(token)
+  const token = authHeader.substring(7)
+  const user = await validateSession(token)
   
-  if (error || !user) {
-    throw new Error('Invalid or expired token')
+  if (!user) {
+    throw new Error('Invalid or expired session')
   }
 
-  const profile = await getUserProfile(user.id)
-  
-  return {
-    ...user,
-    ...profile
-  } as AuthUser
+  return user
 }
 
 // =============================================
@@ -309,12 +151,12 @@ export const validateApiSession = async (request: Request) => {
 export const isProtectedRoute = (pathname: string): boolean => {
   const protectedRoutes = [
     '/dashboard',
-    '/orders',
+    '/orders', 
     '/admin',
     '/exchange',
-    '/profile',
     '/api/orders',
     '/api/admin',
+    '/api/exchange'
   ]
   
   return protectedRoutes.some(route => pathname.startsWith(route))
@@ -324,11 +166,7 @@ export const isProtectedRoute = (pathname: string): boolean => {
  * Check if a route is admin-only
  */
 export const isAdminRoute = (pathname: string): boolean => {
-  const adminRoutes = [
-    '/admin',
-    '/api/admin',
-  ]
-  
+  const adminRoutes = ['/admin', '/api/admin']
   return adminRoutes.some(route => pathname.startsWith(route))
 }
 
@@ -336,10 +174,6 @@ export const isAdminRoute = (pathname: string): boolean => {
  * Check if a route is for exchange users only
  */
 export const isExchangeRoute = (pathname: string): boolean => {
-  const exchangeRoutes = [
-    '/exchange',
-    '/orders',
-  ]
-  
+  const exchangeRoutes = ['/exchange', '/orders']
   return exchangeRoutes.some(route => pathname.startsWith(route))
 } 

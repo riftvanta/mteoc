@@ -1,39 +1,105 @@
+/**
+ * Supabase client configuration (optional service)
+ * Used only for file storage and other non-auth services if needed
+ */
+
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
+import { supabaseConfig } from '@/lib/env'
 
-// Use fallback values to prevent build errors
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key'
+// Create Supabase client only if configuration is available
+export const supabase = supabaseConfig.url && supabaseConfig.anonKey 
+  ? createClient<Database>(supabaseConfig.url, supabaseConfig.anonKey, {
+      auth: {
+        persistSession: false, // We handle auth separately
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+      },
+    })
+  : null
 
-// Only validate in production or when real credentials are provided
-const hasRealCredentials = supabaseUrl !== 'https://placeholder.supabase.co' && supabaseAnonKey !== 'placeholder-anon-key'
-
-if (process.env.NODE_ENV === 'production' && !hasRealCredentials) {
-  throw new Error('Missing Supabase environment variables in production')
+/**
+ * Check if Supabase is configured and available
+ */
+export const hasValidSupabaseConfig = (): boolean => {
+  return !!(supabaseConfig.url && supabaseConfig.anonKey)
 }
 
-// Validate URL format only if we have real credentials
-if (hasRealCredentials) {
-  try {
-    new URL(supabaseUrl)
-  } catch {
-    throw new Error('Invalid NEXT_PUBLIC_SUPABASE_URL format')
-  }
-}
+/**
+ * Storage utilities (if using Supabase for file storage)
+ */
+export const supabaseStorage = {
+  /**
+   * Upload file to Supabase storage
+   */
+  async uploadFile(bucket: string, path: string, file: File): Promise<string | null> {
+    if (!supabase) {
+      console.warn('Supabase not configured for file storage')
+      return null
+    }
 
-// Client-side Supabase client (browser and server)
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: hasRealCredentials,
-    autoRefreshToken: hasRealCredentials,
-    detectSessionInUrl: hasRealCredentials,
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10,
-    },
-  },
-})
+    try {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+        })
 
-// Export helper to check if we have real credentials
-export const hasValidSupabaseConfig = () => hasRealCredentials 
+      if (error) {
+        console.error('File upload error:', error)
+        return null
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(data.path)
+
+      return publicUrl
+    } catch (error) {
+      console.error('File upload failed:', error)
+      return null
+    }
+  },
+
+  /**
+   * Delete file from Supabase storage
+   */
+  async deleteFile(bucket: string, path: string): Promise<boolean> {
+    if (!supabase) {
+      return false
+    }
+
+    try {
+      const { error } = await supabase.storage
+        .from(bucket)
+        .remove([path])
+
+      return !error
+    } catch (error) {
+      console.error('File deletion failed:', error)
+      return false
+    }
+  },
+
+  /**
+   * Get public URL for file
+   */
+  getPublicUrl(bucket: string, path: string): string | null {
+    if (!supabase) {
+      return null
+    }
+
+    const { data } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(path)
+
+    return data.publicUrl
+  },
+} 

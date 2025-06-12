@@ -1,341 +1,430 @@
 /**
- * Comprehensive caching system with Redis support and in-memory fallback
- * Provides both server-side and client-side caching strategies
+ * Optimized caching system with memory-based fallback
+ * Provides efficient caching with proper eviction and error handling
  */
 
-interface CacheOptions {
-  ttl?: number // Time to live in seconds
-  tags?: string[] // Cache invalidation tags
-  staleWhileRevalidate?: number // Background refresh time
-}
+import { appConfig } from './env'
 
-interface CacheEntry<T> {
-  data: T
-  timestamp: number
+// Cache configuration
+const CACHE_CONFIG = {
+  defaultTTL: 300, // 5 minutes
+  maxMemorySize: 50 * 1024 * 1024, // 50MB in bytes
+  cleanupInterval: 60 * 1000, // 1 minute
+  maxKeyLength: 250,
+} as const
+
+// Cache entry interface
+interface CacheEntry<T = any> {
+  value: T
   ttl: number
+  createdAt: number
+  accessCount: number
+  lastAccessed: number
   tags: string[]
+  size: number
 }
 
-// In-memory cache for development and fallback
+// Cache options interface
+interface CacheOptions {
+  ttl?: number
+  tags?: string[]
+}
+
+// Cache statistics interface
+interface CacheStats {
+  hits: number
+  misses: number
+  evictions: number
+  currentSize: number
+  entryCount: number
+  hitRate: number
+}
+
+/**
+ * In-memory cache with LRU eviction and TTL support
+ */
 class MemoryCache {
-  private cache = new Map<string, CacheEntry<any>>()
-  private timers = new Map<string, NodeJS.Timeout>()
+  private cache = new Map<string, CacheEntry>()
+  private stats: CacheStats = {
+    hits: 0,
+    misses: 0,
+    evictions: 0,
+    currentSize: 0,
+    entryCount: 0,
+    hitRate: 0,
+  }
+  private cleanupTimer: NodeJS.Timeout | null = null
 
-  set<T>(key: string, value: T, options: CacheOptions = {}): void {
-    const ttl = (options.ttl || 300) * 1000 // Convert to milliseconds
-    const entry: CacheEntry<T> = {
-      data: value,
-      timestamp: Date.now(),
-      ttl: ttl,
-      tags: options.tags || []
-    }
-
-    this.cache.set(key, entry)
-
-    // Clear existing timer
-    if (this.timers.has(key)) {
-      clearTimeout(this.timers.get(key)!)
-    }
-
-    // Set expiration timer
-    const timer = setTimeout(() => {
-      this.cache.delete(key)
-      this.timers.delete(key)
-    }, ttl)
-
-    this.timers.set(key, timer)
+  constructor() {
+    this.startCleanup()
   }
 
-  get<T>(key: string): T | null {
-    const entry = this.cache.get(key)
-    if (!entry) return null
-
-    // Check if expired
-    if (Date.now() - entry.timestamp > entry.ttl) {
-      this.cache.delete(key)
-      if (this.timers.has(key)) {
-        clearTimeout(this.timers.get(key)!)
-        this.timers.delete(key)
-      }
-      return null
-    }
-
-    return entry.data
-  }
-
-  delete(key: string): void {
-    this.cache.delete(key)
-    if (this.timers.has(key)) {
-      clearTimeout(this.timers.get(key)!)
-      this.timers.delete(key)
+  /**
+   * Calculate approximate size of data in bytes
+   */
+  private calculateSize(data: any): number {
+    try {
+      return JSON.stringify(data).length * 2 // Approximate Unicode bytes
+    } catch {
+      return 1024 // Default size for non-serializable data
     }
   }
 
-  invalidateByTag(tag: string): void {
-    const keysToDelete: string[] = []
+  /**
+   * Check if entry is expired
+   */
+  private isExpired(entry: CacheEntry): boolean {
+    return Date.now() > entry.createdAt + entry.ttl * 1000
+  }
+
+  /**
+   * Evict least recently used entries
+   */
+  private evictLRU(): void {
+    const entries = Array.from(this.cache.entries())
+      .sort(([, a], [, b]) => a.lastAccessed - b.lastAccessed)
+
+    // Remove 25% of entries
+    const toRemove = Math.ceil(entries.length * 0.25)
     
+    for (let i = 0; i < toRemove && i < entries.length; i++) {
+      const [key, entry] = entries[i]
+      this.cache.delete(key)
+      this.stats.currentSize -= entry.size
+      this.stats.evictions++
+    }
+
+    this.stats.entryCount = this.cache.size
+  }
+
+  /**
+   * Cleanup expired entries
+   */
+  private cleanup(): void {
+    const now = Date.now()
+    const expiredKeys: string[] = []
+
     for (const [key, entry] of this.cache.entries()) {
-      if (entry.tags.includes(tag)) {
-        keysToDelete.push(key)
+      if (this.isExpired(entry)) {
+        expiredKeys.push(key)
       }
     }
 
-    keysToDelete.forEach(key => this.delete(key))
-  }
-
-  clear(): void {
-    for (const timer of this.timers.values()) {
-      clearTimeout(timer)
-    }
-    this.cache.clear()
-    this.timers.clear()
-  }
-
-  size(): number {
-    return this.cache.size
-  }
-
-  keys(): string[] {
-    return Array.from(this.cache.keys())
-  }
-}
-
-// Global cache instance
-const memoryCache = new MemoryCache()
-
-// Redis cache implementation (for production)
-class RedisCache {
-  private client: any = null
-  private isConnected = false
-
-  async connect(): Promise<void> {
-    try {
-      // Try to use Redis if available
-      if (process.env.REDIS_URL && typeof window === 'undefined') {
-        const Redis = await import('ioredis').catch(() => null)
-        if (Redis) {
-          this.client = new Redis.default(process.env.REDIS_URL)
-          this.isConnected = true
-          console.log('Redis cache connected successfully')
-        }
+    for (const key of expiredKeys) {
+      const entry = this.cache.get(key)
+      if (entry) {
+        this.cache.delete(key)
+        this.stats.currentSize -= entry.size
+        this.stats.evictions++
       }
-    } catch (error) {
-      console.warn('Redis not available, using memory cache:', error)
-      this.isConnected = false
+    }
+
+    this.stats.entryCount = this.cache.size
+
+    // Evict LRU if memory usage is high
+    if (this.stats.currentSize > CACHE_CONFIG.maxMemorySize) {
+      this.evictLRU()
     }
   }
 
-  async set<T>(key: string, value: T, options: CacheOptions = {}): Promise<void> {
-    if (!this.isConnected) {
-      return memoryCache.set(key, value, options)
+  /**
+   * Start cleanup timer
+   */
+  private startCleanup(): void {
+    if (this.cleanupTimer) return
+
+    this.cleanupTimer = setInterval(() => {
+      this.cleanup()
+    }, CACHE_CONFIG.cleanupInterval)
+
+    // Cleanup on process exit
+    process.on('beforeExit', () => {
+      this.destroy()
+    })
+  }
+
+  /**
+   * Validate cache key
+   */
+  private validateKey(key: string): void {
+    if (!key || typeof key !== 'string') {
+      throw new Error('Cache key must be a non-empty string')
     }
-
-    try {
-      const ttl = options.ttl || 300
-      const cacheData = {
-        data: value,
-        tags: options.tags || [],
-        timestamp: Date.now()
-      }
-
-      await this.client.setex(key, ttl, JSON.stringify(cacheData))
-
-      // Store tags for invalidation
-      if (options.tags?.length) {
-        for (const tag of options.tags) {
-          await this.client.sadd(`tag:${tag}`, key)
-          await this.client.expire(`tag:${tag}`, ttl)
-        }
-      }
-    } catch (error) {
-      console.warn('Redis set failed, falling back to memory cache:', error)
-      memoryCache.set(key, value, options)
+    if (key.length > CACHE_CONFIG.maxKeyLength) {
+      throw new Error(`Cache key too long (max ${CACHE_CONFIG.maxKeyLength} characters)`)
     }
   }
 
-  async get<T>(key: string): Promise<T | null> {
-    if (!this.isConnected) {
-      return memoryCache.get<T>(key)
-    }
-
-    try {
-      const cached = await this.client.get(key)
-      if (!cached) return null
-
-      const parsed = JSON.parse(cached)
-      return parsed.data
-    } catch (error) {
-      console.warn('Redis get failed, falling back to memory cache:', error)
-      return memoryCache.get<T>(key)
-    }
-  }
-
-  async delete(key: string): Promise<void> {
-    if (!this.isConnected) {
-      return memoryCache.delete(key)
-    }
-
-    try {
-      await this.client.del(key)
-    } catch (error) {
-      console.warn('Redis delete failed:', error)
-      memoryCache.delete(key)
-    }
-  }
-
-  async invalidateByTag(tag: string): Promise<void> {
-    if (!this.isConnected) {
-      return memoryCache.invalidateByTag(tag)
-    }
-
-    try {
-      const keys = await this.client.smembers(`tag:${tag}`)
-      if (keys.length > 0) {
-        await this.client.del(...keys)
-        await this.client.del(`tag:${tag}`)
-      }
-    } catch (error) {
-      console.warn('Redis tag invalidation failed:', error)
-      memoryCache.invalidateByTag(tag)
-    }
-  }
-}
-
-// Global cache instance
-const cache = new RedisCache()
-
-// Initialize cache connection
-if (typeof window === 'undefined') {
-  cache.connect().catch(console.warn)
-}
-
-// Cache wrapper functions
-export const cacheManager = {
   /**
    * Get value from cache
    */
-  async get<T>(key: string): Promise<T | null> {
-    return cache.get<T>(key)
-  },
+  get<T = any>(key: string): T | null {
+    try {
+      this.validateKey(key)
+      
+      const entry = this.cache.get(key)
+      if (!entry) {
+        this.stats.misses++
+        return null
+      }
+
+      if (this.isExpired(entry)) {
+        this.cache.delete(key)
+        this.stats.currentSize -= entry.size
+        this.stats.entryCount--
+        this.stats.misses++
+        return null
+      }
+
+      // Update access statistics
+      entry.accessCount++
+      entry.lastAccessed = Date.now()
+      this.stats.hits++
+
+      return entry.value as T
+    } catch (error) {
+      console.error('Cache get error:', error)
+      this.stats.misses++
+      return null
+    }
+  }
 
   /**
    * Set value in cache
    */
-  async set<T>(key: string, value: T, options: CacheOptions = {}): Promise<void> {
-    return cache.set(key, value, options)
-  },
+  set<T = any>(key: string, value: T, options: CacheOptions = {}): boolean {
+    try {
+      this.validateKey(key)
+
+      const size = this.calculateSize(value)
+      const now = Date.now()
+      const ttl = options.ttl ?? CACHE_CONFIG.defaultTTL
+
+      // Check if adding this entry would exceed memory limit
+      if (size > CACHE_CONFIG.maxMemorySize) {
+        console.warn(`Cache entry too large: ${key} (${size} bytes)`)
+        return false
+      }
+
+      // Remove existing entry if present
+      const existingEntry = this.cache.get(key)
+      if (existingEntry) {
+        this.stats.currentSize -= existingEntry.size
+      }
+
+      // Create new entry
+      const entry: CacheEntry<T> = {
+        value,
+        ttl,
+        createdAt: now,
+        accessCount: 0,
+        lastAccessed: now,
+        tags: options.tags ?? [],
+        size,
+      }
+
+      this.cache.set(key, entry)
+      this.stats.currentSize += size
+      this.stats.entryCount = this.cache.size
+
+      // Trigger cleanup if memory usage is high
+      if (this.stats.currentSize > CACHE_CONFIG.maxMemorySize) {
+        this.cleanup()
+      }
+
+      return true
+    } catch (error) {
+      console.error('Cache set error:', error)
+      return false
+    }
+  }
 
   /**
-   * Delete specific key
+   * Delete value from cache
    */
-  async delete(key: string): Promise<void> {
-    return cache.delete(key)
-  },
+  delete(key: string): boolean {
+    try {
+      this.validateKey(key)
+      
+      const entry = this.cache.get(key)
+      if (entry) {
+        this.cache.delete(key)
+        this.stats.currentSize -= entry.size
+        this.stats.entryCount--
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Cache delete error:', error)
+      return false
+    }
+  }
 
   /**
-   * Invalidate all keys with specific tag
+   * Clear entries by tags
    */
-  async invalidateTag(tag: string): Promise<void> {
-    return cache.invalidateByTag(tag)
-  },
+  clearByTags(tags: string[]): number {
+    let cleared = 0
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (entry.tags.some(tag => tags.includes(tag))) {
+        this.cache.delete(key)
+        this.stats.currentSize -= entry.size
+        cleared++
+      }
+    }
+
+    this.stats.entryCount = this.cache.size
+    return cleared
+  }
+
+  /**
+   * Clear all cache entries
+   */
+  clear(): void {
+    this.cache.clear()
+    this.stats.currentSize = 0
+    this.stats.entryCount = 0
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getStats(): CacheStats {
+    const totalRequests = this.stats.hits + this.stats.misses
+    return {
+      ...this.stats,
+      hitRate: totalRequests > 0 ? (this.stats.hits / totalRequests) * 100 : 0,
+    }
+  }
+
+  /**
+   * Destroy cache and cleanup resources
+   */
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = null
+    }
+    this.clear()
+  }
+}
+
+// Global cache instance
+const globalCache = new MemoryCache()
+
+/**
+ * Cache manager with advanced features
+ */
+export class CacheManager {
+  private cache: MemoryCache
+
+  constructor(cache: MemoryCache = globalCache) {
+    this.cache = cache
+  }
+
+  /**
+   * Get value from cache
+   */
+  async get<T = any>(key: string): Promise<T | null> {
+    return this.cache.get<T>(key)
+  }
+
+  /**
+   * Set value in cache
+   */
+  async set<T = any>(key: string, value: T, options: CacheOptions = {}): Promise<boolean> {
+    return this.cache.set(key, value, options)
+  }
+
+  /**
+   * Delete value from cache
+   */
+  async delete(key: string): Promise<boolean> {
+    return this.cache.delete(key)
+  }
 
   /**
    * Cache a function result with automatic key generation
    */
   async cached<T>(
     fn: () => Promise<T>,
-    keyParts: (string | number)[],
+    keys: string[],
     options: CacheOptions = {}
   ): Promise<T> {
-    const key = keyParts.join(':')
+    const cacheKey = keys.join(':')
     
     // Try to get from cache first
-    const cached = await this.get<T>(key)
+    const cached = await this.get<T>(cacheKey)
     if (cached !== null) {
       return cached
     }
 
     // Execute function and cache result
     const result = await fn()
-    await this.set(key, result, options)
+    await this.set(cacheKey, result, options)
     
     return result
-  },
+  }
 
   /**
-   * Memoize function with cache
+   * Invalidate cache by tags
    */
-  memoize<T extends (...args: any[]) => Promise<any>>(
-    fn: T,
-    keyGenerator: (...args: Parameters<T>) => string,
-    options: CacheOptions = {}
-  ): T {
-    return (async (...args: Parameters<T>) => {
-      const key = keyGenerator(...args)
-      const cached = await this.get(key)
-      
-      if (cached !== null) {
-        return cached
-      }
+  async invalidateByTags(tags: string[]): Promise<number> {
+    return this.cache.clearByTags(tags)
+  }
 
-      const result = await fn(...args)
-      await this.set(key, result, options)
-      
-      return result
-    }) as T
+  /**
+   * Clear all cache
+   */
+  async clear(): Promise<void> {
+    this.cache.clear()
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getStats(): CacheStats {
+    return this.cache.getStats()
   }
 }
 
-// Cache key generators for consistency
+// Export default cache manager instance
+export const cacheManager = new CacheManager()
+
+// Cache key generators
 export const cacheKeys = {
   dashboardStats: () => 'dashboard:stats',
-  recentOrders: (limit: number) => `dashboard:recent-orders:${limit}`,
-  orderDetails: (orderId: string) => `order:${orderId}`,
-  exchangeDetails: (exchangeId: string) => `exchange:${exchangeId}`,
-  userSession: (userId: string) => `session:${userId}`,
-  systemConfig: () => 'system:config',
-  bankList: () => 'banks:active',
-  ordersByExchange: (exchangeId: string, page: number) => `orders:exchange:${exchangeId}:page:${page}`,
-  orderSearch: (query: string, filters: string) => `search:orders:${query}:${filters}`,
-  analytics: (timeframe: string) => `analytics:${timeframe}`,
-}
+  recentOrders: (limit: number) => `orders:recent:${limit}`,
+  exchangeStats: (exchangeId: string) => `exchange:${exchangeId}:stats`,
+  orderDetails: (orderId: string) => `order:${orderId}:details`,
+  userProfile: (userId: string) => `user:${userId}:profile`,
+  exchangeOrders: (exchangeId: string, page: number) => `exchange:${exchangeId}:orders:${page}`,
+} as const
 
-// Cache tags for invalidation
+// Cache tags for grouped invalidation
 export const cacheTags = {
+  DASHBOARD: 'dashboard',
   ORDERS: 'orders',
   EXCHANGES: 'exchanges',
   USERS: 'users',
-  DASHBOARD: 'dashboard',
-  SYSTEM_CONFIG: 'system_config',
-  BANKS: 'banks',
-  ANALYTICS: 'analytics',
-}
+  ADMIN: 'admin',
+} as const
 
-// Helper function to invalidate multiple related caches
-export const invalidateRelatedCaches = async (tags: string[]) => {
-  await Promise.all(tags.map(tag => cacheManager.invalidateTag(tag)))
-}
-
-// Performance monitoring for cache
-export const cacheStats = {
-  hits: 0,
-  misses: 0,
-  
-  recordHit() {
-    this.hits++
-  },
-  
-  recordMiss() {
-    this.misses++
-  },
-  
-  getHitRate() {
-    const total = this.hits + this.misses
-    return total > 0 ? (this.hits / total) * 100 : 0
-  },
-  
-  reset() {
-    this.hits = 0
-    this.misses = 0
-  }
+// Development cache debugging
+if (appConfig.isDevelopment) {
+  // Log cache stats every 5 minutes
+  setInterval(() => {
+    const stats = cacheManager.getStats()
+    if (stats.hits + stats.misses > 0) {
+      console.log('Cache Stats:', {
+        hitRate: `${stats.hitRate.toFixed(2)}%`,
+        entries: stats.entryCount,
+        size: `${(stats.currentSize / 1024 / 1024).toFixed(2)}MB`,
+        hits: stats.hits,
+        misses: stats.misses,
+        evictions: stats.evictions,
+      })
+    }
+  }, 5 * 60 * 1000)
 } 
